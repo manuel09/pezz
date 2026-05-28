@@ -67,8 +67,32 @@ function cacheSet(k, v) {
   cache.set(k, { v, t: Date.now() });
 }
 
+// Cooldown globale: se VidXgo risponde 403 ip_range blocked (sistemico,
+// non per-titolo) marchiamo il provider come down per 1h così evitiamo di
+// sprecare richieste e timeout su ogni /stream. Si auto-recovera al primo
+// probe successivo se upstream torna online. Health-check via /api/status
+// fa retry più frequenti (60s) → riapre il provider appena vidxgo riapre.
+let _downUntil = 0;
+const DOWN_COOLDOWN_MS = 60 * 60 * 1000; // 1h
+function isDown() { return Date.now() < _downUntil; }
+function markDown(reason) {
+  _downUntil = Date.now() + DOWN_COOLDOWN_MS;
+  console.error(`[VidXgo] provider DOWN (${reason}) — cooldown 1h`);
+}
+function clearDown() {
+  if (_downUntil) {
+    console.log('[VidXgo] provider UP — cooldown cleared');
+    _downUntil = 0;
+  }
+}
+
 // Ottiene fresh master playlist URL signed dal CDN (TTL ~5min).
 // La funzione fa /t/{path} → JSON {url, expire}.
+//
+// IMPORTANTE: l'URL ritornato deve essere arricchito con &h=1 prima di passarlo
+// al CDN. Senza quel flag il vixcloud serve un master "low" senza la traccia
+// audio ITA 5.1 separata (EXT-X-MEDIA TYPE=AUDIO). Risultato: video sì, audio
+// no. Stesso meccanismo che usa SC (StreamingCommunity) parsando window.canPlayFHD.
 async function getMasterUrl(numericId, season, episode, isMovie) {
   const path = isMovie ? numericId : `${numericId}/${season}/${episode}`;
   const refreshRes = await fetch(`${VIDXGO_DOMAIN}/t/${path}`, {
@@ -85,7 +109,13 @@ async function getMasterUrl(numericId, season, episode, isMovie) {
   if (!refreshRes.ok) throw new Error(`/t/ -> ${refreshRes.status}`);
   const data = await refreshRes.json();
   if (!data || !data.url) throw new Error('no url in /t/ response');
-  return { url: data.url, expire: data.expire || (Date.now() + 4 * 60 * 1000) };
+  // Appendi &h=1 (o ?h=1 se non c'erano query string) per richiedere la
+  // playlist FHD con audio separato. Evita doppi se già presente.
+  let masterUrl = data.url;
+  if (!/[?&]h=1\b/.test(masterUrl)) {
+    masterUrl += (masterUrl.includes('?') ? '&' : '?') + 'h=1';
+  }
+  return { url: masterUrl, expire: data.expire || (Date.now() + 4 * 60 * 1000) };
 }
 
 // Cache master URL per (imdb, s, e). Rinnova quando vicino alla scadenza.
@@ -111,6 +141,9 @@ async function cdnFetch(url, extraHeaders = {}) {
 
 async function findStream(imdbId, season, episode, isMovie) {
   if (!imdbId || !imdbId.startsWith('tt')) return null;
+  // Skip rapido se provider in cooldown post-403 ip_range (verificato 2026-06-01:
+  // upstream blocca server-side IPs con response {"error":"blocked","block_type":"ip_range"}).
+  if (isDown()) return null;
   const numericId = imdbId.replace('tt', '');
   const ckey = `vx:${numericId}:${season || ''}:${episode || ''}`;
   const cached = cacheGet(ckey);
@@ -124,11 +157,20 @@ async function findStream(imdbId, season, episode, isMovie) {
       timeout: 8000,
       redirect: 'follow',
     });
+    if (probe.status === 403) {
+      markDown(`probe 403 (${path})`);
+      return null;
+    }
     if (!probe.ok) return null;
 
     // Verifico anche che /t/ risponda (a volte la pagina esiste ma niente stream)
     const master = await getMasterUrlCached(numericId, season, episode, isMovie);
     if (!master.url) return null;
+
+    // Successo → se eravamo down ma siamo arrivati qui, evidentemente l'upstream
+    // è tornato. Clear del flag (anche se di solito non capita perché isDown()
+    // skippa prima — questo branch serve solo dopo restart server).
+    clearDown();
 
     const out = {
       provider: 'GS',
@@ -173,4 +215,4 @@ async function resolveSegmentUrl(numericId, season, episode, isMovie, segmentPat
   return null;
 }
 
-module.exports = { findStream, getMasterUrlCached, cdnFetch, resolveSegmentUrl };
+module.exports = { findStream, getMasterUrlCached, cdnFetch, resolveSegmentUrl, isDown };

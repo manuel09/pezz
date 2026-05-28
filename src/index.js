@@ -37,7 +37,7 @@ function publicBase(req) {
 
 // Path noti del SDK / app che NON sono config codificate.
 const KNOWN_PATHS = new Set([
-  'configure', 'api', 'debug', 'play', 'hls', 'dl', 'resolve', 'extra', 'donate', 'manifest.json', 'stream', 'meta', 'catalog', 'subtitles',
+  'configure', 'api', 'debug', 'play', 'hls', 'hls2', 'dl', 'resolve', 'extra', 'donate', 'manifest.json', 'stream', 'meta', 'catalog', 'subtitles',
   'logo.png', 'logo.svg', 'background.png', 'background.svg', 'pezzottio-logo.png',
   'changelog',
 ]);
@@ -140,6 +140,12 @@ async function testTorbox(key) {
 //   - vx = GuardaSerie  (id = imdb number)
 //   - sc = StreamingCommunity (id = tmdb)
 //   - au = AnimeUnity (id = anime id upstream)
+//
+// Il router è montato su /hls e /hls2 (alias) per supportare cache-busting:
+// se si vuole forzare CF a invalidare le response cached, basta cambiare il
+// path emesso da addon.js da /hls a /hls2 (o viceversa) — entrambi gli alias
+// servono lo stesso router con lo stesso behavior. Default è /hls perché è
+// quello che CF Worker / regole esistenti già conoscono.
 const vidxgo = require('./providers/vidxgo');
 const streamingcommunity = require('./providers/streamingcommunity');
 const animeunity = require('./providers/animeunity');
@@ -150,10 +156,14 @@ const SC_UPSTREAM = process.env.SC_UPSTREAM || 'https://vixsrc.to';
 
 const PROVIDERS = { vx: vidxgo, sc: streamingcommunity, au: animeunity };
 
+// hlsBase deriva il prefix dal mount point del router (req.baseUrl = "/hls"
+// o "/hls2"). In questo modo gli URL riscritti restano sullo stesso prefix
+// del request entrante — niente cross-prefix che confonderebbe CF cache.
 function hlsBase(req) {
   const proto = req.headers['x-forwarded-proto'] || req.protocol;
   const host = req.headers['x-forwarded-host'] || req.get('host');
-  return `${proto}://${host}/hls/${req.params.prov}/${req.params.id}/${req.params.season}/${req.params.episode}`;
+  const prefix = req.baseUrl || '/hls2';
+  return `${proto}://${host}${prefix}/${req.params.prov}/${req.params.id}/${req.params.season}/${req.params.episode}`;
 }
 
 function parseSE(req) {
@@ -173,7 +183,8 @@ const QUALITY_PRIORITY = [
   { tag: 'RESOLUTION=1280x720', label: '720p' },
   { tag: 'RESOLUTION=854x480', label: '480p' },
 ];
-app.get('/hls/:prov/:id/:season/:episode/master.m3u8', async (req, res) => {
+const hlsRouter = express.Router();
+hlsRouter.get('/:prov/:id/:season/:episode/master.m3u8', async (req, res) => {
   const prov = PROVIDERS[req.params.prov];
   if (!prov) return res.status(404).send('unknown provider');
   try {
@@ -255,7 +266,7 @@ app.get('/hls/:prov/:id/:season/:episode/master.m3u8', async (req, res) => {
 });
 
 // Quality sub-playlist: rewrite segment URL → /hls/.../seg/SEGNAME?u=ENC
-app.get('/hls/:prov/:id/:season/:episode/playlist/:encUrl.m3u8', async (req, res) => {
+hlsRouter.get('/:prov/:id/:season/:episode/playlist/:encUrl.m3u8', async (req, res) => {
   const prov = PROVIDERS[req.params.prov];
   if (!prov) return res.status(404).send('unknown provider');
   try {
@@ -292,7 +303,7 @@ app.get('/hls/:prov/:id/:season/:episode/playlist/:encUrl.m3u8', async (req, res
 
 // AES key proxy. URI EXT-X-KEY è riscritta a /hls/.../key/{enc} dal proxy
 // sub-playlist. Key statica → cache aggressiva CDN.
-app.get('/hls/:prov/:id/:season/:episode/key/:encUrl', async (req, res) => {
+hlsRouter.get('/:prov/:id/:season/:episode/key/:encUrl', async (req, res) => {
   const prov = PROVIDERS[req.params.prov];
   if (!prov) return res.status(404).send('unknown provider');
   try {
@@ -313,7 +324,7 @@ app.get('/hls/:prov/:id/:season/:episode/key/:encUrl', async (req, res) => {
 });
 
 // Segment binary: fetch + stream. Se token scaduto, rinnova e ricerca segment.
-app.get('/hls/:prov/:id/:season/:episode/seg/:segName', async (req, res) => {
+hlsRouter.get('/:prov/:id/:season/:episode/seg/:segName', async (req, res) => {
   const prov = PROVIDERS[req.params.prov];
   if (!prov) return res.status(404).send('unknown provider');
   try {
@@ -352,6 +363,13 @@ app.get('/hls/:prov/:id/:season/:episode/seg/:segName', async (req, res) => {
     res.status(500).send('proxy error: ' + e.message);
   }
 });
+
+// Monto il router su /hls2 (path attivo, emesso da addon.js) e su /hls
+// (legacy, per sessioni in flight con URL già cached da Stremio). hlsBase()
+// usa req.baseUrl quindi i sub-path emessi nei master/playlist restano sullo
+// stesso prefix di entrata — niente cross-prefix che confonde CF cache.
+app.use('/hls2', hlsRouter);
+app.use('/hls', hlsRouter);
 
 // === PROXY DEBRID DIRECT-STREAM ===
 // Risolve il problema CDN RD: serve 'application/force-download' senza CORS.
@@ -692,6 +710,15 @@ app.get('/api/status', async (req, res) => {
     pingHost('Comet', 'https://comet.feels.legal/'),
     pingHost('StremThru', 'https://stremthru.13377001.xyz/'),
   ]);
+  // Override GuardaSerie: il pingHost considera 403 come "alive" (server
+  // risponde), ma per VidXgo specifico 403 = ip_range blocked sistemico —
+  // il provider è di fatto inutilizzabile. Mostra rosso se vidxgo.isDown()
+  // ha marcato cooldown (post-403 in findStream) o se la probe ha avuto 403.
+  const gs = probes.find((p) => p.name === 'GuardaSerie');
+  if (gs && (vidxgo.isDown() || gs.status === 403)) {
+    gs.ok = false;
+    gs.error = 'ip_range blocked upstream';
+  }
   const result = {
     timestamp: Date.now(),
     providers: probes,

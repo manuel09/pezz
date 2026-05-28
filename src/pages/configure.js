@@ -322,7 +322,7 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
         </p>
 
         <!-- LIVE USAGE — fetched ogni 60s da /api/usage -->
-        <div id="live-usage" class="hidden mb-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+        <div id="live-usage" class="hidden mb-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
           <div class="inline-flex items-center gap-2 text-zinc-200">
             <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-dot"></span>
             <span><strong id="live-1h" class="text-white font-bold tabular-nums">—</strong> <span class="text-zinc-400">attivi adesso</span></span>
@@ -331,6 +331,52 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
           <div class="text-zinc-200">
             <strong id="live-24h" class="text-white font-bold tabular-nums">—</strong> <span class="text-zinc-400">attivi nelle ultime 24h</span>
           </div>
+        </div>
+
+        <!-- DONAZIONI CRYPTO — card hero (compatta: 3 row inline, niente box
+             per coin, niente icone grandi. Tutto in ~140px verticali). -->
+        <div id="donate-crypto" class="card px-4 py-3 mb-6 max-w-xl" style="border-left: 3px solid #f7931a;">
+          <div class="flex items-center justify-between gap-3 mb-2.5">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="text-base">💎</span>
+              <span class="font-semibold text-zinc-100 text-sm">Sostieni Pezzottio</span>
+            </div>
+            <span class="text-[10px] text-zinc-500 whitespace-nowrap hidden sm:inline">crypto diretto · no intermediari</span>
+          </div>
+          <div class="space-y-1">
+            <div class="flex items-center gap-2 py-1">
+              <span class="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0" style="background:#f7931a;">₿</span>
+              <div class="mono text-[10px] text-zinc-400 truncate flex-1 min-w-0" title="bc1qcu9ch68gua0u4pgfqzlxshtdv99s06pwyhu4mm">bc1qcu9ch68gua0u4pgfqzlxshtdv99s06pwyhu4mm</div>
+              <button data-copy-addr="bc1qcu9ch68gua0u4pgfqzlxshtdv99s06pwyhu4mm" class="copy-addr-btn text-[10px] px-2 py-1 rounded font-medium text-white transition hover:opacity-90 whitespace-nowrap shrink-0" style="background:#f7931a;">Copia</button>
+              <button data-qr-addr="bc1qcu9ch68gua0u4pgfqzlxshtdv99s06pwyhu4mm" data-qr-label="Bitcoin" class="qr-addr-btn text-[10px] px-2 py-1 rounded bg-white/[0.04] border border-white/[0.08] text-zinc-300 hover:bg-white/[0.08] transition whitespace-nowrap shrink-0">QR</button>
+            </div>
+            <div class="flex items-center gap-2 py-1">
+              <span class="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0" style="background:#627eea;">Ξ</span>
+              <div class="mono text-[10px] text-zinc-400 truncate flex-1 min-w-0" title="0x8915E5A201d66d55C91F9828c580931dB92fD82a">0x8915E5A201d66d55C91F9828c580931dB92fD82a</div>
+              <button data-copy-addr="0x8915E5A201d66d55C91F9828c580931dB92fD82a" class="copy-addr-btn text-[10px] px-2 py-1 rounded font-medium text-white transition hover:opacity-90 whitespace-nowrap shrink-0" style="background:#627eea;">Copia</button>
+              <button data-qr-addr="0x8915E5A201d66d55C91F9828c580931dB92fD82a" data-qr-label="Ethereum" class="qr-addr-btn text-[10px] px-2 py-1 rounded bg-white/[0.04] border border-white/[0.08] text-zinc-300 hover:bg-white/[0.08] transition whitespace-nowrap shrink-0">QR</button>
+            </div>
+            <div class="flex items-center gap-2 py-1">
+              <span class="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0" style="background:linear-gradient(135deg,#9945ff,#14f195);">◎</span>
+              <div class="mono text-[10px] text-zinc-400 truncate flex-1 min-w-0" title="9U21MvZGgGhXpjuTz9MNfYorTQEYhkfd1LtWfjA9ib7W">9U21MvZGgGhXpjuTz9MNfYorTQEYhkfd1LtWfjA9ib7W</div>
+              <button data-copy-addr="9U21MvZGgGhXpjuTz9MNfYorTQEYhkfd1LtWfjA9ib7W" class="copy-addr-btn text-[10px] px-2 py-1 rounded font-medium text-white transition hover:opacity-90 whitespace-nowrap shrink-0" style="background:linear-gradient(135deg,#9945ff,#14f195);">Copia</button>
+              <button data-qr-addr="9U21MvZGgGhXpjuTz9MNfYorTQEYhkfd1LtWfjA9ib7W" data-qr-label="Solana" class="qr-addr-btn text-[10px] px-2 py-1 rounded bg-white/[0.04] border border-white/[0.08] text-zinc-300 hover:bg-white/[0.08] transition whitespace-nowrap shrink-0">QR</button>
+            </div>
+          </div>
+
+          <!-- Mini-guida Revolut collapsed di default (zero ingombro nella hero) -->
+          <details class="mt-2 group">
+            <summary class="cursor-pointer text-[10px] text-zinc-400 hover:text-zinc-200 transition flex items-center gap-1 select-none">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" class="transition-transform group-open:rotate-90"><path d="M9 5l7 7-7 7V5z"/></svg>
+              Hai solo Revolut? Si può donare lo stesso
+            </summary>
+            <div class="mt-1.5 pl-3 text-[10px] text-zinc-400 leading-relaxed space-y-0.5">
+              <div>1. Revolut → <strong class="text-zinc-200">Cripto</strong> → scegli BTC, ETH o SOL</div>
+              <div>2. Compra l'importo che vuoi donare (anche €5)</div>
+              <div>3. <strong class="text-zinc-200">Invia</strong> → <strong class="text-zinc-200">A un wallet esterno</strong> → incolla l'indirizzo qui sopra</div>
+              <div class="text-[10px] text-zinc-500 pt-0.5">Stessa procedura su Binance, Coinbase, Crypto.com, Bitpanda. Le commissioni di rete le paga il mittente.</div>
+            </div>
+          </details>
         </div>
 
         <div class="flex flex-wrap items-center gap-3">
@@ -1082,6 +1128,16 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
     </footer>
   </main>
 
+  <!-- Modal QR per crypto donations -->
+  <div id="qr-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" style="font-family:inherit">
+    <div class="bg-zinc-900 border border-white/10 rounded-lg p-6 max-w-sm w-full text-center">
+      <div id="qr-modal-label" class="text-sm font-semibold text-white mb-3"></div>
+      <div id="qr-modal-img" class="inline-block bg-white p-3 rounded mb-3"></div>
+      <div id="qr-modal-addr" class="mono text-[10px] text-zinc-400 break-all mb-4"></div>
+      <button id="qr-modal-close" class="text-xs text-zinc-400 hover:text-white transition px-3 py-1.5 rounded border border-white/10 hover:bg-white/5">Chiudi</button>
+    </div>
+  </div>
+
   <script>
     const $ = (s) => document.querySelector(s);
     const BASE = ${JSON.stringify(base)};
@@ -1166,6 +1222,45 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
     }
     loadUsage();
     setInterval(loadUsage, 60_000);
+
+    // === DONAZIONI CRYPTO ===
+    // Solo Copia indirizzo (clipboard API) + QR modal (libreria QRCode già
+    // caricata per il QR del manifest install). Niente Web3, niente deep
+    // link wallet — chi vuole donare copia l'indirizzo e basta.
+    document.querySelectorAll('.copy-addr-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const addr = btn.dataset.copyAddr;
+        if (!addr) return;
+        try { await navigator.clipboard.writeText(addr); } catch (_) {}
+        const orig = btn.textContent;
+        btn.textContent = '✓ Copiato';
+        btn.style.color = '#10b981';
+        setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, 1200);
+      });
+    });
+    const qrModal = $('#qr-modal');
+    const qrModalImg = $('#qr-modal-img');
+    const qrModalLabel = $('#qr-modal-label');
+    const qrModalAddr = $('#qr-modal-addr');
+    function closeQrModal() { if (qrModal) qrModal.classList.add('hidden'); }
+    function openQrModal(addr, label) {
+      if (!addr || !qrModal) return;
+      qrModalLabel.textContent = label || 'Indirizzo';
+      qrModalAddr.textContent = addr;
+      qrModalImg.innerHTML = '';
+      new QRCode(qrModalImg, {
+        text: addr, width: 220, height: 220,
+        colorDark: '#08080c', colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M,
+      });
+      qrModal.classList.remove('hidden');
+    }
+    document.querySelectorAll('.qr-addr-btn').forEach((btn) => {
+      btn.addEventListener('click', () => openQrModal(btn.dataset.qrAddr, btn.dataset.qrLabel));
+    });
+    if ($('#qr-modal-close')) $('#qr-modal-close').addEventListener('click', closeQrModal);
+    if (qrModal) qrModal.addEventListener('click', (e) => { if (e.target === qrModal) closeQrModal(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeQrModal(); });
 
     async function loadStatus() {
       try {
