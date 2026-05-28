@@ -1,0 +1,46 @@
+[
+  {
+    "date": "2026-05-29",
+    "items": [
+      { "type": "feat", "msg": "Nuovo provider HTTP: AnimeUnity. Ora ci sono 3 fonti italiane per anime in parallelo (AnimeWorld + AnimeSaturn + AnimeUnity), con audio italiano nativo dove disponibile" },
+      { "type": "fix", "msg": "Matching anime riscritto da zero: trovati anche titoli in romaji/giapponese (Re:Zero kara Hajimeru, Sousou no Frieren, Boku no Hero Academia, ecc.) grazie agli alias AniList recuperati automaticamente dall'imdb" },
+      { "type": "fix", "msg": "AnimeWorld ora trova anche gli anime vecchi (Dragon Ball Z, GT, Naruto classico, Bleach, ecc.) — l'endpoint /api/search interno bypassa la vista 'homepage' limitata di /filter" },
+      { "type": "fix", "msg": "AnimeSaturn supporta i player HLS (Naruto, Bleach e altri anime con playlist .m3u8 ora partono davvero invece di restituire stream vuoto)" },
+      { "type": "fix", "msg": "Disambiguazione strict tra anime con suffisso single-letter: 'Dragon Ball Z' non confuso con 'Dragon Ball', 'Spy x Family' corretto, ecc. Penalty hard per modificatori sequel (Kai/Super/GT/Movie/Special) quando il titolo cercato non li ha" },
+      { "type": "fix", "msg": "Match titoli 'smashed': 'Mushishi' trova 'Mushi-Shi', 'Steins;Gate' trova 'steins gate', '86 - Eighty Six' finalmente trovato" },
+      { "type": "feat", "msg": "Mapping permanente IMDB → slug provider: la prima volta che un anime viene cercato, gli slug AnimeWorld/AnimeSaturn/AnimeUnity vengono salvati in cache. Lookup successivi istantanei (skip della search)" },
+      { "type": "feat", "msg": "Supporto TMDB id (per chi usa il TMDB addon di Stremio invece di Cinemeta): tmdb:NNN risolto via ani.zip + fallback diretto TMDB API → IMDB. Funziona per anime, film, serie non-anime" }
+    ]
+  },
+  {
+    "date": "2026-05-28",
+    "items": [
+      { "type": "fix", "msg": "AnimeWorld e AnimeSaturn di nuovo operativi (entrambi gli upstream avevano cambiato struttura e i nostri scraper restituivano 0 stream)" },
+      { "type": "fix", "msg": "StreamingCommunity (VixSrc) riattivato: stream HLS con audio italiano nativo per film e serie TV" },
+      { "type": "breaking", "msg": "Profili multipli: ora puoi generare più link in un colpo solo (es. uno per ogni membro della famiglia). Ogni link va installato in un profilo Stremio diverso. Scegli se usare la stessa chiave Torbox per tutti i profili o una chiave diversa per ognuno." },
+      { "type": "feat", "msg": "Pagina /changelog con timeline delle novità per data + categoria (Nuovo / Fix / Setup / Perf / Breaking) + banner top per breaking change persistente fino a dismiss" },
+      { "type": "feat", "msg": "Logo PEZZOTTIO ufficiale aggiunto al manifest dell'addon" },
+      { "type": "feat", "msg": "Auto-prefetch del prossimo episodio: quando guardi una serie con Torbox, l'episodio successivo viene caricato in background. Cliccchi → parte istantaneo." },
+      { "type": "config", "msg": "Filtro risultati a 3 opzioni: Mostra tutto / Solo torrent / Solo HTTP italiani" },
+      { "type": "config", "msg": "Opzione 'Full ITA': mostra solo stream con audio italiano confermato (esclude SUB ITA)" },
+      { "type": "perf", "msg": "/stream ora apre in 3 secondi anche quando i provider sono lenti (timeout strict + cap globale)" },
+      { "type": "perf", "msg": "Latenza /stream ulteriormente ridotta a 2 secondi su film e serie TV (3s preservato per anime). Cap timeout differenziato per tipo di contenuto, nessuna perdita di risultati." },
+      { "type": "fix", "msg": "Fix crash quando Solid / Bitsearch / TokyoTosho erano offline" }
+    ]
+  },
+  {
+    "date": "2026-05-27",
+    "items": [
+      { "type": "breaking", "msg": "Pezzottio è ora ufficialmente solo per Torbox. Real-Debrid è in sviluppo (RD ha disabilitato l'API di cache check, supporto in standby finché non troviamo alternativa)" },
+      { "type": "config", "msg": "3 stili di layout selezionabili: Pezzottio default / Torrentio classico / AIOStreams compatibile" },
+      { "type": "config", "msg": "Opzione 'Ordine risultati' (smart per default, oppure forzato HTTP-first o TB-first)" },
+      { "type": "fix", "msg": "Stream più veloci: rimosso lock infinito su provider Solid, aggiunto cooldown automatico su provider down" },
+      { "type": "fix", "msg": "Anime: 'One Piece S23E08' e simili (file con numerazione assoluta) ora trovano correttamente l'episodio invece di scartare il torrent come 'non cached'" },
+      { "type": "feat", "msg": "Aggiunto scraper TokyoTosho per anime" },
+      { "type": "fix", "msg": "Bitsearch / Solid / EZTV / YTS: switch ai mirror funzionanti dopo che i domini principali hanno iniziato a bloccare IP cloud" },
+      { "type": "perf", "msg": "Pool di candidati ITA molto più ampio: il filtro apostrofo (es. 'Grey's' → 'Greys') ha sbloccato release prima invisibili agli scraper" },
+      { "type": "feat", "msg": "Aggiunto Meteor come fonte aggregator (con corretta iniezione chiave debrid)" },
+      { "type": "feat", "msg": "Setup pagina configure aggiornata: form modernizzato, copy migliorata, link referral Torbox integrato" }
+    ]
+  }
+]

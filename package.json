@@ -1,0 +1,21 @@
+{
+  "name": "pezzottio-stremio-addon",
+  "version": "0.4.0",
+  "description": "Stremio addon: torrent search + RealDebrid/Torbox",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "cycletls": "^2.0.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.22.2",
+    "node-fetch": "^2.7.0",
+    "stremio-addon-sdk": "^1.6.10"
+  }
+}

@@ -1,0 +1,11 @@
+node_modules/
+.env
+*.log
+.DS_Store
+.gcache.json
+
+# Runtime cache / mappings (popolati durante l'uso)
+assets/anime-mapping.json
+*.local.js
+*.local.json
+scripts/

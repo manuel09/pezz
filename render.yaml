@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: pezzottio
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MAX_RESULTS
+        value: "25"
+      - key: PUBLIC_HOST
+        value: https://pezzottio.onrender.com
+    healthCheckPath: /manifest.json
