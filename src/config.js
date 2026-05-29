@@ -29,6 +29,9 @@ function runWithConfig(userConfig, fn) {
 function getConfig() {
   const store = als.getStore();
   const user = store?.user || {};
+  // Lingua content: 'it' (default, comportamento attuale) | 'en' | 'mixed'.
+  // Backward-compat: link senza `lang` → 'it' → zero impatto su utenti IT esistenti.
+  const lang = (user.lang === 'en' || user.lang === 'mixed') ? user.lang : 'it';
   return {
     port: parseInt(process.env.PORT || '7001', 10),
     host: process.env.HOST || (process.env.RENDER || process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1'),
@@ -36,6 +39,7 @@ function getConfig() {
     realdebridKey: user.rd || '',
     torboxKey: user.tb || '',
     maxResults: parseInt(process.env.MAX_RESULTS || '25', 10),
+    lang,
   };
 }
 

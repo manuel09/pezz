@@ -2,7 +2,7 @@ const { addonBuilder } = require('stremio-addon-sdk');
 const { getConfig } = require('./config');
 const { resolveTitle } = require('./cinemeta');
 const { searchTorrents, distributeByQuality } = require('./search');
-const { isHDR, isItalian, hasItalianSub, parseQuality, formatSize } = require('./parse');
+const { isHDR, isItalian, hasItalianSub, isEnglish, hasEnglishSub, parseQuality, formatSize } = require('./parse');
 const { getCurrentUserConfig, encodeConfig } = require('./config');
 const debrid = require('./debrid');
 const animeworld = require('./providers/animeworld');
@@ -12,6 +12,7 @@ const animeMeta = require('./anime-meta');
 const kitsu = require('./kitsu');
 const vidxgo = require('./providers/vidxgo');
 const streamingcommunity = require('./providers/streamingcommunity');
+const animepahe = require('./providers/animepahe');
 const external = require('./providers/external');
 const { findFileForEpisode } = require('./parse');
 
@@ -146,6 +147,14 @@ builder.defineStreamHandler(async ({ type, id }) => {
     const isMovie = type === 'movie';
     const httpProviderArgs = [meta.title, meta.season, meta.episode, meta.absoluteEpisode, meta.animeAliases || [], meta.imdbId || imdbId, meta.providerSlugs];
 
+    // Lingua content scelta dall'utente nel /configure (default 'it' per backward
+    // compat: tutti i link esistenti non hanno il campo `lang` → cadono in 'it' →
+    // comportamento identico a oggi). Usata sotto per skippare i provider IT-only
+    // quando l'utente vuole solo contenuti EN.
+    const lang = getConfig().lang;
+    const wantIT = lang !== 'en';   // 'it' o 'mixed' o undefined
+    const wantEN = lang !== 'it';   // 'en' o 'mixed'
+
     // Master timeout per ogni fetch. 2-3s per provider INTERNI (TB/SC/AU + HTTP)
     // → /stream apre veloce, gli stream HTTP arrivano come "lazy URL placeholder"
     // (vedi sotto): zero attesa per la chain di fetch, la risoluzione avviene
@@ -175,11 +184,13 @@ builder.defineStreamHandler(async ({ type, id }) => {
         ]).then((s) => s || meta.providerSlugs || null)
       : Promise.resolve(null);
 
-    // Risultati paralleli: torrent + external + slugs animemapping
+    // Risultati paralleli: torrent + external + slugs animemapping.
+    // VidXgo (GS) è IT-only → skippato se wantIT=false. SC ha multi-audio
+    // ITA+ENG → sempre chiamato (defaultAudio gestito a livello di proxy master).
     const [torrentsRaw, externalStreams, vxStream, scStream, slugsResult] = await Promise.all([
       raceTimeout(searchTorrents(meta, type, imdbId), []),
       raceTimeout(external.searchExternal(type, fullStremioId).catch(() => []), [], CAP_MS_EXTERNAL),
-      (!isAnime && imdbId)
+      (!isAnime && imdbId && wantIT)
         ? raceTimeout(vidxgo.findStream(imdbId, meta.season, meta.episode, isMovie).catch(() => null), null)
         : Promise.resolve(null),
       (!isAnime && imdbId)
@@ -204,7 +215,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
     const epNum = meta.episode || meta.absoluteEpisode;
     const absParam = meta.absoluteEpisode ? `?abs=${meta.absoluteEpisode}` : '';
 
-    if (isAnime && ranked.aw.length) {
+    if (isAnime && wantIT && ranked.aw.length) {
       const top = ranked.aw[0]; // /play/SLUG
       const m = top.match(/^\/play\/(.+)$/);
       if (m && epNum) {
@@ -219,7 +230,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
         });
       }
     }
-    if (isAnime && ranked.as.length) {
+    if (isAnime && wantIT && ranked.as.length) {
       const top = ranked.as[0]; // /anime/SLUG
       const m = top.match(/^\/anime\/(.+)$/);
       if (m && epNum) {
@@ -234,7 +245,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
         });
       }
     }
-    if (isAnime && ranked.au.length) {
+    if (isAnime && wantIT && ranked.au.length) {
       const top = ranked.au[0]; // /anime/ID-SLUG
       const m = top.match(/^\/anime\/(\d+)-(.+)$/);
       if (m && epNum) {
@@ -255,9 +266,9 @@ builder.defineStreamHandler(async ({ type, id }) => {
     // Se animemapping non ha lo slug per un provider, fallback al vecchio
     // findStreams (search dinamica + chain), in parallelo con cap 3s.
     // Anime NON mappati: tentiamo comunque AW/AS/AU via search.
-    const needFallbackAW = isAnime && !ranked.aw.length;
-    const needFallbackAS = isAnime && !ranked.as.length;
-    const needFallbackAU = isAnime && !ranked.au.length;
+    const needFallbackAW = isAnime && wantIT && !ranked.aw.length;
+    const needFallbackAS = isAnime && wantIT && !ranked.as.length;
+    const needFallbackAU = isAnime && wantIT && !ranked.au.length;
     if (needFallbackAW || needFallbackAS || needFallbackAU) {
       const [awFb, asFb, auFb] = await Promise.all([
         needFallbackAW ? raceTimeout(animeworld.findStreams(...httpProviderArgs).catch(() => []), []) : Promise.resolve([]),
@@ -269,10 +280,18 @@ builder.defineStreamHandler(async ({ type, id }) => {
         url: `${publicHost}/hls/au/${s.animeId}/1/${s.episodeNum}/master.m3u8`,
       })));
     }
+
+    // Animepahe (anime HTTP EN sub/dub): equivalente di AW/AS/AU per utenti EN.
+    // Scraper diretto su animepahe.ru, stesso pattern dei provider IT (no API
+    // esterne). Quando wantEN per un anime, chiediamo i suoi stream.
+    if (isAnime && wantEN) {
+      const apStreams = await raceTimeout(animepahe.findStreams(...httpProviderArgs).catch(() => []), []);
+      httpStreams.push(...apStreams);
+    }
     // VidXgo: il CDN ha session/IP pinning sul token (token risolto da IP X
     // funziona solo se richiesto dallo stesso IP). Bypass non praticabile →
     // proxy URL come prima. ~half della banda HLS resta sul server.
-    if (vxStream) {
+    if (vxStream && wantIT) {
       const s = vxStream.isMovie ? 'movie' : vxStream.season;
       const e = vxStream.isMovie ? 'movie' : vxStream.episode;
       const proxyUrl = `${publicHost}/hls/vx/${vxStream.numericId}/${s}/${e}/master.m3u8`;
@@ -301,10 +320,22 @@ builder.defineStreamHandler(async ({ type, id }) => {
       });
     }
     // Merge torrent scraper interni + risultati addon esterni (Torrentio ecc.)
-    // Dedupe per infoHash. Riordino per tier ITA → quality → seeds (come fa search.js).
+    // Dedupe per infoHash. Riordino per tier lingua → quality → seeds.
+    //
+    // Tier scelto in base a config.lang:
+    //   - 'it' (default): italian > italianSub > resto (logica storica invariata)
+    //   - 'en':            english > englishSub > resto (i flag .english/.englishSub
+    //                      vengono enriciti sotto su ogni torrent)
     const QUALITY_RANK = { '4K': 5, '1080p': 4, '720p': 3, '480p': 2, CAM: 1 };
     const qrank = (q) => QUALITY_RANK[q] || 0;
-    const tier = (r) => (r.italian ? 0 : r.italianSub ? 1 : 2);
+    // Tier sort: per ANIME in EN, JP+sub-EN è standard mondiale → pari priorità
+    // con dub EN. Per film/serie EN, dub > sub (l'utente EN guarda dub di solito).
+    // Per IT (default), invariato: ITA > sub ITA > resto.
+    const tier = lang === 'en'
+      ? (isAnime
+          ? (r) => (r.english || r.englishSub) ? 0 : 1
+          : (r) => (r.english ? 0 : r.englishSub ? 1 : 2))
+      : (r) => (r.italian ? 0 : r.italianSub ? 1 : 2);
     function mergeTorrents(...lists) {
       const seen = new Set();
       const out = [];
@@ -312,6 +343,14 @@ builder.defineStreamHandler(async ({ type, id }) => {
         for (const r of list) {
           if (!r || !r.infoHash || seen.has(r.infoHash)) continue;
           seen.add(r.infoHash);
+          // Per lang='en': arricchisco con .english/.englishSub dai filename.
+          // I scraper IT non popolano questi flag (solo .italian/.italianSub) →
+          // detection on-demand al merge per non toccare search.js.
+          if (lang === 'en' && r.english === undefined) {
+            const fn = r.filename || r.title || '';
+            r.english = isEnglish(fn);
+            r.englishSub = !r.english && hasEnglishSub(fn);
+          }
           out.push(r);
         }
       }
@@ -422,8 +461,13 @@ builder.defineStreamHandler(async ({ type, id }) => {
     }
     function langsArr(t) {
       const out = [];
-      if (t.italian) out.push('italian');
-      else if (t.italianSub) out.push('italian'); // sub ITA mostriamo comunque bandiera IT
+      if (lang === 'en') {
+        if (t.english) out.push('english');
+        else if (t.englishSub) out.push('english');
+      } else {
+        if (t.italian) out.push('italian');
+        else if (t.italianSub) out.push('italian'); // sub ITA mostriamo comunque bandiera IT
+      }
       return out;
     }
 
@@ -431,7 +475,9 @@ builder.defineStreamHandler(async ({ type, id }) => {
       const quality = t.quality || 'SD';
       const hasHdr = isHDR(t.title);
       const qualityLabel = `${quality}${hasHdr ? ' HDR' : ''}`;
-      const langSingle = t.italian ? 'ITA' : t.italianSub ? 'Sub ITA' : null;
+      const langSingle = lang === 'en'
+        ? (t.english ? 'ENG' : t.englishSub ? 'Sub ENG' : null)
+        : (t.italian ? 'ITA' : t.italianSub ? 'Sub ITA' : null);
 
       const behaviorHints = {};
       if (bingeGroup) behaviorHints.bingeGroup = bingeGroup;
@@ -470,8 +516,13 @@ builder.defineStreamHandler(async ({ type, id }) => {
           ? `Pezzottio ${provLabel}\n📺 ${qualityLabel}`
           : `Pezzottio\n📺 ${qualityLabel}`;
         const lines = [titleHeader];
-        if (t.italian) lines.push('🇮🇹  Audio ITA');
-        else if (t.italianSub) lines.push('📝  SUB ITA');
+        if (lang === 'en') {
+          if (t.english) lines.push('🇺🇸  Audio ENG');
+          else if (t.englishSub) lines.push('📝  SUB ENG');
+        } else {
+          if (t.italian) lines.push('🇮🇹  Audio ITA');
+          else if (t.italianSub) lines.push('📝  SUB ITA');
+        }
         title = lines.join('\n');
       }
 
@@ -486,7 +537,9 @@ builder.defineStreamHandler(async ({ type, id }) => {
     // Stream HTTP diretti. Vanno in cima.
     const PROVIDER_LABELS = { AW: 'AnimeWorld', AS: 'AnimeSaturn', AU: 'AnimeUnity', GS: 'GuardaSerie', SC: 'StreamingCommunity' };
     function formatHttpStream(s) {
-      const langSingle = s.italian ? 'ITA' : s.italianSub ? 'Sub ITA' : null;
+      const langSingle = lang === 'en'
+        ? (s.english ? 'ENG' : s.englishSub ? 'Sub ENG' : null)
+        : (s.italian ? 'ITA' : s.italianSub ? 'Sub ITA' : null);
       const providerFull = PROVIDER_LABELS[s.provider] || s.provider;
 
       const behaviorHints = { notWebReady: true };
@@ -526,8 +579,13 @@ builder.defineStreamHandler(async ({ type, id }) => {
       } else {
         name = `Pezzottio ${s.provider}\n📺 HTTP`;
         const lines = [titleHeader];
-        if (s.italian) lines.push('🇮🇹  Audio ITA');
-        else if (s.italianSub) lines.push('📝  SUB ITA');
+        if (lang === 'en') {
+          if (s.english) lines.push('🇺🇸  Audio ENG');
+          else if (s.englishSub) lines.push('📝  SUB ENG');
+        } else {
+          if (s.italian) lines.push('🇮🇹  Audio ITA');
+          else if (s.italianSub) lines.push('📝  SUB ITA');
+        }
         title = lines.join('\n');
       }
 
@@ -844,12 +902,27 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
 // che restituisce videos[] completi con thumbnail/numero corretti. Cache 24h.
 // Altri prefissi (tt, mal, anilist...) li lasciamo a Cinemeta/altri addon: Stremio
 // li chiamerà comunque in parallelo e prenderà la prima risposta utile.
+//
+// IMDB enrichment: aggiungiamo imdb_id al meta quando possibile (via ani.zip).
+// Aiuta Stremio a NON confondere anime con live-action quando entrambi hanno
+// lo stesso nome (es. One Piece anime tt0388629 vs live action tt11737520).
+// Additive — non cambia il behavior IT (cinemeta italiano risolve uguale).
 builder.defineMetaHandler(async ({ type, id }) => {
   try {
     if (id && id.startsWith('kitsu:')) {
       const data = await kitsu.getMeta(type, id);
       if (data && data.meta) {
-        return { meta: data.meta, cacheMaxAge: 24 * 60 * 60, staleRevalidate: 6 * 60 * 60, staleError: 7 * 24 * 60 * 60 };
+        const enriched = { ...data.meta };
+        // Lookup imdb via resolveTitle se il meta non l'ha già. Cache lato ani.zip.
+        if (!enriched.imdb_id) {
+          try {
+            const resolved = await resolveTitle('series', id);
+            if (resolved && (resolved.imdbId || resolved._imdbResolved)) {
+              enriched.imdb_id = resolved.imdbId || resolved._imdbResolved;
+            }
+          } catch (_) { /* lookup opzionale, fallback silenzioso */ }
+        }
+        return { meta: enriched, cacheMaxAge: 24 * 60 * 60, staleRevalidate: 6 * 60 * 60, staleError: 7 * 24 * 60 * 60 };
       }
     }
     return { meta: null };

@@ -5,6 +5,7 @@ const {
   isSeasonPack, titleMatches,
   titleMatchesAnimeStrict, matchesAnimeEpisode,
 } = require('./parse');
+const { getConfig } = require('./config');
 
 // Cache LRU in memoria per evitare di colpire le API a ogni richiesta.
 // I tracker pubblici (specialmente Solid) rate-limitano dopo poche query.
@@ -666,6 +667,10 @@ async function searchTorrents(meta, type, imdbId) {
   const isAnime = type === 'anime' || meta.type === 'anime';
   const effectiveType = isAnime ? 'anime' : type;
 
+  // Lang dalla config utente (default 'it' = comportamento storico invariato).
+  // Usato sotto per skippare le query ITA-biased quando lang='en'.
+  const _lang = (() => { try { return getConfig().lang || 'it'; } catch (_) { return 'it'; } })();
+
   if (effectiveType === 'movie') {
     const cleanTitle = cleanQuery(meta.title);
     const cleanItalianTitle = meta.italianTitle && meta.italianTitle !== meta.title
@@ -674,20 +679,26 @@ async function searchTorrents(meta, type, imdbId) {
     const qIta = `${cleanTitle}${meta.year ? ' ' + meta.year : ''} ita`;
     const qItalianTitle = cleanItalianTitle
       ? `${cleanItalianTitle}${meta.year ? ' ' + meta.year : ''}` : null;
+    // Branching su lang: lang='it' (default) → query ITA-biased come sempre.
+    // lang='en' → solo query neutre (cleanTitle + year). Skip mircrew/nahom/qIta
+    // (release group italiani) e skip qItalianTitle (titolo localizzato ITA).
+    const skipItaQueries = _lang === 'en';
     // Solid: 1 sola query (è permissivo, ITA emergono comunque). Bitsearch ulteriore fonte ITA.
-    buckets = await Promise.all([
+    const baseSearches = [
       searchYTS(meta),
       searchApibay(q),                  // se IP cloud 403, cooldown 1h
-      searchApibaySingle(qIta),
       searchApibaySingle(cleanTitle),
       searchTrio(q),                    // fallback indipendente da apibay
-      searchTrio(qIta),
       searchTrio(cleanTitle),
       searchKnaben(q),
-      searchKnaben(qIta),
       searchSolid(q),
-      searchBitsearch(qIta),
       searchBitsearch(cleanTitle),
+    ];
+    const itaSearches = skipItaQueries ? [] : [
+      searchApibaySingle(qIta),
+      searchTrio(qIta),
+      searchKnaben(qIta),
+      searchBitsearch(qIta),
       // Release group italiani mirati su più indexer per ampliare il pool ITA.
       searchBitsearch(`mircrew ${cleanTitle}`),
       searchBitsearch(`nahom ${cleanTitle}`),
@@ -701,7 +712,8 @@ async function searchTorrents(meta, type, imdbId) {
       qItalianTitle ? searchBitsearch(qItalianTitle) : Promise.resolve([]),
       qItalianTitle ? searchKnaben(qItalianTitle) : Promise.resolve([]),
       qItalianTitle ? searchApibaySingle(qItalianTitle) : Promise.resolve([]),
-    ]);
+    ];
+    buckets = await Promise.all([...baseSearches, ...itaSearches]);
   } else if (effectiveType === 'series') {
     const cleanTitle = cleanQuery(meta.title);
     const cleanItalianTitle = meta.italianTitle && meta.italianTitle !== meta.title
@@ -716,19 +728,22 @@ async function searchTorrents(meta, type, imdbId) {
       ? `${cleanItalianTitle} S${sPadded}` : null;
     const qItalianTitleEp = cleanItalianTitle && sPadded && ePadded
       ? `${cleanItalianTitle} S${sPadded}E${ePadded}` : null;
-    buckets = await Promise.all([
+    const skipItaQueries = _lang === 'en';
+    const baseSearches = [
       imdbId ? searchEZTV(meta, imdbId) : Promise.resolve([]),
       searchApibay(q),
+      searchTrio(q),
+      searchKnaben(q),
+      searchSolid(q),
+    ];
+    const itaSearches = skipItaQueries ? [] : [
       qItaEp ? searchApibaySingle(qItaEp) : Promise.resolve([]),
       qItaSeason ? searchApibaySingle(qItaSeason) : Promise.resolve([]),
       // Fallback Trio (Bitsearch+Knaben+Solid) sulle stesse query, indipendenti
       // dal blocco IP cloud che colpisce apibay su Render.
-      searchTrio(q),
       qItaEp ? searchTrio(qItaEp) : Promise.resolve([]),
       qItaSeason ? searchTrio(qItaSeason) : Promise.resolve([]),
-      searchKnaben(q),
       qItaSeason ? searchKnaben(qItaSeason) : Promise.resolve([]),
-      searchSolid(q),
       qItaSeason ? searchBitsearch(qItaSeason) : Promise.resolve([]),
       qItaEp ? searchBitsearch(qItaEp) : Promise.resolve([]),
       // Release group italiani mirati su più indexer per ampliare il pool ITA.
@@ -738,14 +753,13 @@ async function searchTorrents(meta, type, imdbId) {
       qItaSeason ? searchBitsearch(`nahom ${cleanTitle} ${sPadded}`) : Promise.resolve([]),
       qItaSeason ? searchBitsearch(`mem ${cleanTitle} ${sPadded}`) : Promise.resolve([]),
       // Titolo italiano localizzato (es. "Il Mentalista" per "The Mentalist").
-      // Cinemeta lo fornisce via TMDB. Aumenta drasticamente il match sui
-      // torrent ITA che usano il titolo localizzato nel filename.
       qItalianTitleSeason ? searchBitsearch(qItalianTitleSeason) : Promise.resolve([]),
       qItalianTitleSeason ? searchKnaben(qItalianTitleSeason) : Promise.resolve([]),
       qItalianTitleSeason ? searchApibaySingle(qItalianTitleSeason) : Promise.resolve([]),
       qItalianTitleEp ? searchBitsearch(qItalianTitleEp) : Promise.resolve([]),
       qItalianTitleEp ? searchApibaySingle(qItalianTitleEp) : Promise.resolve([]),
-    ]);
+    ];
+    buckets = await Promise.all([...baseSearches, ...itaSearches]);
   } else if (effectiveType === 'anime') {
     // === FLOW ANIME (separato dai film) ===
     const cleanTitle = cleanQuery(meta.title);
@@ -764,15 +778,33 @@ async function searchTorrents(meta, type, imdbId) {
       }
     }
     if (!nyaaQueries.length) nyaaQueries.push(cleanTitle);
-    // Query esplicite "ITA" per gli anime: trova release di gruppi italiani
-    // (Tenebra, Wolverine, ItalianShare, ecc.) anche quando il titolo principale
-    // non porta marker linguistico. Nyaa fuzzy-matcha sui filename.
-    if (absPadded) {
-      nyaaQueries.push(`${cleanTitle} ${absPadded} ITA`);
-    } else if (sPadded && ePadded) {
-      nyaaQueries.push(`${cleanTitle} S${sPadded}E${ePadded} ITA`);
-    } else {
-      nyaaQueries.push(`${cleanTitle} ITA`);
+    // Query lingua-specifiche per gli anime su Nyaa. Lang dalla config utente:
+    //   'it' (default): solo modificatore "ITA" → release group italiani
+    //     (Tenebra, Wolverine, ItalianShare, ecc.)
+    //   'en': solo gruppi EN noti (SubsPlease, Erai-raws, Judas) → sub EN
+    //   'mixed': entrambi → pool più grande
+    // Backward compat: link IT esistenti hanno lang=undefined → 'it' → identico.
+    const _lang = (() => { try { return getConfig().lang || 'it'; } catch (_) { return 'it'; } })();
+    const wantITA = _lang !== 'en';
+    const wantENG = _lang !== 'it';
+    if (wantITA) {
+      if (absPadded) {
+        nyaaQueries.push(`${cleanTitle} ${absPadded} ITA`);
+      } else if (sPadded && ePadded) {
+        nyaaQueries.push(`${cleanTitle} S${sPadded}E${ePadded} ITA`);
+      } else {
+        nyaaQueries.push(`${cleanTitle} ITA`);
+      }
+    }
+    if (wantENG) {
+      // Gruppi EN più stabili 2026: SubsPlease (sub EN settimanali), Erai-raws
+      // (sub EN multi-track), Judas (HEVC), HorribleSubs (legacy).
+      const enGroups = ['SubsPlease', 'Erai-raws'];
+      for (const g of enGroups) {
+        if (absPadded) nyaaQueries.push(`${cleanTitle} ${absPadded} ${g}`);
+        else if (sPadded && ePadded) nyaaQueries.push(`${cleanTitle} S${sPadded}E${ePadded} ${g}`);
+        else nyaaQueries.push(`${cleanTitle} ${g}`);
+      }
     }
 
     // Le altre fonti hanno meno rate limit, possiamo fare più query
@@ -808,11 +840,28 @@ async function searchTorrents(meta, type, imdbId) {
         if (meta.season && meta.episode) {
           if (!matchesAnimeEpisode(r.title, meta.season, meta.episode, meta.absoluteEpisode)) continue;
         }
-        // 3) SOLO release con audio ITA, sub ITA esplicito, o release group multi-sub
-        // (Erai-raws, SubsPlease, ToonsHub, CR WEB-DL, etc.).
-        if (!r.italian && !r.italianSub && !animeProbablyHasItaSub(r.title)) continue;
-        // Marca come sub ITA quando viene da group multi-sub
-        if (!r.italian && !r.italianSub) r.italianSub = true;
+        // 3) Filtro lingua condizionato sulla config dell'utente:
+        //    'it' (default): SOLO release ITA/sub-ITA/multi-sub-ITA (Erai-raws, ToonsHub, ASW)
+        //    'en': accetta TUTTO il pool anime — Nyaa/TokyoTosho/AniDex sono già EN-native
+        //          (SubsPlease/Erai-raws/Judas sub EN, BD-rips dub EN, ecc.)
+        if (_lang === 'en') {
+          // Marca quello che riconosciamo come EN per il tier sort sotto
+          if (r.english === undefined) {
+            // Usa il modulo parse esposto in cima (non ricarico). Detection inline.
+            const nm = r.title || '';
+            // Group EN noti per sub: SubsPlease, Erai-raws, Judas, HorribleSubs
+            // Group dub EN: vari (sentai, funimation, US BD-rip)
+            const ENG_GROUPS = /\b(?:subs?please|erai-raws|judas|horriblesubs|coalgirls|commie|underwater|deadfish|sentai|funimation|crunchyroll)\b/i;
+            const HAS_ENG_DUB = /\b(?:english\s?dub|en[-_ ]?dub|eng[-_ ]?dub|dub[-_ ]?eng|funimation\s?dub)\b/i;
+            if (HAS_ENG_DUB.test(nm)) { r.english = true; r.englishSub = false; }
+            else if (ENG_GROUPS.test(nm)) { r.english = false; r.englishSub = true; }
+            else { r.english = false; r.englishSub = true; } // anime su Nyaa default = sub EN
+          }
+        } else {
+          if (!r.italian && !r.italianSub && !animeProbablyHasItaSub(r.title)) continue;
+          // Marca come sub ITA quando viene da group multi-sub
+          if (!r.italian && !r.italianSub) r.italianSub = true;
+        }
         out.push(r);
         continue;
       }
@@ -846,11 +895,18 @@ async function searchTorrents(meta, type, imdbId) {
     }
   }
 
-  // Tier di priorità: 1) ITA audio  2) ITA sub  3) tutto il resto
+  // Tier di priorità per lingua scelta:
+  //   IT (default): 1) audio ITA  2) sub ITA  3) resto
+  //   EN (film/series): 1) audio ENG  2) sub ENG  3) resto
+  //   EN anime: 1) audio ENG OR sub ENG (JP+sub-EN = standard mondiale anime)  2) resto
   // Dentro ogni tier: per qualità (4K > 1080p > 720p > 480p > CAM > ?), poi seeds.
   const QUALITY_RANK = { '4K': 5, '1080p': 4, '720p': 3, '480p': 2, CAM: 1 };
   const qrank = (q) => QUALITY_RANK[q] || 0;
-  const tier = (r) => r.italian ? 0 : r.italianSub ? 1 : 2;
+  const tier = _lang === 'en'
+    ? (effectiveType === 'anime'
+        ? (r) => (r.english || r.englishSub) ? 0 : 1
+        : (r) => r.english ? 0 : r.englishSub ? 1 : 2)
+    : (r) => r.italian ? 0 : r.italianSub ? 1 : 2;
   out.sort((a, b) => {
     const td = tier(a) - tier(b);
     if (td !== 0) return td;

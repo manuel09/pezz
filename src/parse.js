@@ -169,6 +169,30 @@ function hasItalianSub(name) {
   return !AUDIO_ITA_RE.test(cleaned);
 }
 
+// === Detection EN (mirror della logica ITA, usato solo se config.lang='en') ===
+// Pattern audio ENG: token espliciti "eng/english", source US (NF/AMZN/ATVP),
+// release groups noti per audio EN originale (RARBG, YIFY, GalaxyRG, ecc.),
+// dub explicit. Falso negativo accettato (no marker = "non sappiamo, escluso").
+const AUDIO_ENG_RE = /\b(?:eng|english|ENG|EN[- ]?DUB|english[- ]?dub|en\.dub|amzn|atvp|netflix|nf\b|max|hmax|hbo|dsnp|disney\+?|hulu|paramount\+?|peacock|crunchyroll dub|funimation|crunchyroll\.com)\b/i;
+const SUBENG_RE = /\b(?:sub[\s.\-_]?eng|sub[\s.\-_]?english|ENG[\s.\-_]?SUB|english[\s.\-_]?sub|softsub[\s.\-_]?eng|hardsub[\s.\-_]?eng|\beng\s?subs?\b)\b/i;
+
+function isEnglish(name) {
+  if (!name) return false;
+  // Esclude sub-eng prima di testare audio
+  const cleaned = name.replace(SUBENG_RE, ' ');
+  // Se c'è "ITA" o "italian" prominente, probabilmente non è audio EN principale
+  // (multi-audio releases vengono comunque catturati da sub-eng o detection ITA loro).
+  if (/\b(?:ita\s+audio|audio[\s.\-_]?ita|italian[\s.\-_]?audio|dub[\s.\-_]?ita)\b/i.test(cleaned)) return false;
+  return AUDIO_ENG_RE.test(cleaned);
+}
+
+function hasEnglishSub(name) {
+  if (!name) return false;
+  if (!SUBENG_RE.test(name)) return false;
+  const cleaned = name.replace(SUBENG_RE, ' ');
+  return !AUDIO_ENG_RE.test(cleaned);
+}
+
 // SPECIFICO PER ANIME (non per film): release group VERIFICATI multi-sub con ITA.
 // Lista stretta — molti gruppi (SubsPlease, BILI, Crunchyroll standalone, HiDive)
 // in realtà rilasciano SOLO subs inglesi → falsi positivi se inclusi qui.
@@ -356,6 +380,7 @@ function findFileForEpisode(files, season, episode, absoluteEpisode = null) {
 
 module.exports = {
   parseQuality, formatSize, matchesEpisode, isItalian, hasItalianSub,
+  isEnglish, hasEnglishSub,
   animeProbablyHasItaSub, seriesProbablyHasItaSub,
   isSeasonPack, isHDR, titleMatches, titleMatchesSeriesStrict,
   titleMatchesAnimeStrict, matchesAnimeEpisode,

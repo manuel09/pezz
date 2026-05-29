@@ -82,16 +82,28 @@ async function _getMediaFusionToken(rdKey) {
 }
 
 async function _buildBaseUrl(addon, rdKey) {
-  if (!rdKey) return addon.baseUrl;
+  // Lang patch: se utente ha lang='en', rimuovi |language=italian dal URL
+  // Torrentio così non filtra i risultati italiani-only. Backward compat:
+  // lang='it' default → URL invariato (resta con language=italian).
+  let baseUrl = addon.baseUrl;
+  try {
+    const lang = getConfig().lang;
+    if (lang === 'en' && addon.key === 'torrentio') {
+      baseUrl = baseUrl.replace(/\|language=italian/g, '');
+    }
+  } catch (_) { /* getConfig non chiamato in test runtime — fallback safe */ }
+  if (!rdKey) return baseUrl;
   try {
     if (addon.key === 'torrentio') {
       // Se il baseUrl è un proxy AIOStreams (contiene /stremio/ con UUID),
       // la chiave RD è già incorporata nel config-token. NON appendere
       // |realdebrid= che romperebbe il routing del proxy.
-      if (/\/stremio\/[0-9a-f-]{36}\//i.test(addon.baseUrl)) {
-        return addon.baseUrl;
+      // Uso `baseUrl` (eventualmente lang-patched senza language=italian) e
+      // non `addon.baseUrl` (raw), così EN funziona anche con RD attivo.
+      if (/\/stremio\/[0-9a-f-]{36}\//i.test(baseUrl)) {
+        return baseUrl;
       }
-      return `${addon.baseUrl}|realdebrid=${rdKey}`;
+      return `${baseUrl}|realdebrid=${rdKey}`;
     }
     if (addon.key === 'comet') {
       const m = addon.baseUrl.match(/^(https?:\/\/[^/]+\/)([^/]+)$/);

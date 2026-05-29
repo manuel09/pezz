@@ -4,6 +4,7 @@ const { getRouter } = require('stremio-addon-sdk');
 const addonInterface = require('./addon');
 const { getConfig, runWithConfig, decodeConfig } = require('./config');
 const configurePage = require('./pages/configure');
+const configurePageEN = require('./pages/configure-en');
 
 const app = express();
 app.use(express.json({ limit: '64kb' }));
@@ -37,7 +38,7 @@ function publicBase(req) {
 
 // Path noti del SDK / app che NON sono config codificate.
 const KNOWN_PATHS = new Set([
-  'configure', 'api', 'debug', 'play', 'hls', 'hls2', 'dl', 'resolve', 'extra', 'donate', 'manifest.json', 'stream', 'meta', 'catalog', 'subtitles',
+  'configure', 'configure-en', 'api', 'debug', 'play', 'hls', 'hls2', 'dl', 'resolve', 'extra', 'extra-en', 'donate', 'manifest.json', 'stream', 'meta', 'catalog', 'subtitles',
   'logo.png', 'logo.svg', 'background.png', 'background.svg', 'pezzottio-logo.png',
   'changelog',
 ]);
@@ -86,6 +87,28 @@ app.get('/configure', (req, res) => {
       fullIta: req.userConfig.fullIta === true || req.userConfig.fullIta === 'true',
       prefetch: req.userConfig.prefetch === true || req.userConfig.prefetch === 'true',
       // Default ON. Diventa false solo se l'utente l'ha disattivato esplicitamente.
+      httpAnime: !(req.userConfig.httpAnime === false || req.userConfig.httpAnime === 'false'),
+    })
+  );
+});
+
+// /configure-en: versione inglese. Stessa interfaccia (parametri identici),
+// stesso /api/test backend. Il link config generato qui include lang='en'
+// così l'addon attiva il branch EN (skip provider IT, Nyaa query EN-groups,
+// Torrentio senza filter italiano, audio SC default ENG).
+app.get('/configure-en', (req, res) => {
+  res.type('html').send(
+    configurePageEN.render({
+      base: publicBase(req),
+      rd: req.userConfig.rd || '',
+      tb: req.userConfig.tb || '',
+      order: req.userConfig.order || 'smart',
+      aios: req.userConfig.aios === true || req.userConfig.aios === 'true',
+      style: req.userConfig.style || null,
+      onlyTorrent: req.userConfig.onlyTorrent === true || req.userConfig.onlyTorrent === 'true',
+      filter: req.userConfig.filter || null,
+      fullIta: req.userConfig.fullIta === true || req.userConfig.fullIta === 'true',
+      prefetch: req.userConfig.prefetch === true || req.userConfig.prefetch === 'true',
       httpAnime: !(req.userConfig.httpAnime === false || req.userConfig.httpAnime === 'false'),
     })
   );
@@ -221,8 +244,26 @@ hlsRouter.get('/:prov/:id/:season/:episode/master.m3u8', async (req, res) => {
       const encoded = Buffer.from(absUrl).toString('base64url');
       return `${myBase}/playlist/${encoded}.m3u8`;
     }
+    // Se lang='en', SC ha multi-audio (ITA default + ENG). Swappiamo i flag
+    // DEFAULT/AUTOSELECT per far selezionare al player la traccia ENG di default.
+    // Lang dalla config utente (default 'it' → comportamento attuale identico).
+    const _userLang = getConfig().lang;
+    const swapAudioToEN = _userLang === 'en';
     function rewriteHeaderLine(line) {
-      return line.replace(/URI="([^"]+)"/g, (_, u) => `URI="${rewriteUrl(u)}"`);
+      let out = line.replace(/URI="([^"]+)"/g, (_, u) => `URI="${rewriteUrl(u)}"`);
+      if (swapAudioToEN && /^#EXT-X-MEDIA:[^]*TYPE=AUDIO/.test(out)) {
+        if (/LANGUAGE="ita"/i.test(out)) {
+          // Traccia ITA: non più default
+          out = out.replace(/DEFAULT=YES/g, 'DEFAULT=NO').replace(/AUTOSELECT=YES/g, 'AUTOSELECT=NO');
+        } else if (/LANGUAGE="eng"/i.test(out)) {
+          // Traccia ENG: marca DEFAULT=YES + AUTOSELECT=YES (forza se mancanti)
+          out = /DEFAULT=NO/.test(out) ? out.replace(/DEFAULT=NO/g, 'DEFAULT=YES') :
+                /DEFAULT=YES/.test(out) ? out : out.replace(/^#EXT-X-MEDIA:/, '#EXT-X-MEDIA:DEFAULT=YES,');
+          out = /AUTOSELECT=NO/.test(out) ? out.replace(/AUTOSELECT=NO/g, 'AUTOSELECT=YES') :
+                /AUTOSELECT=YES/.test(out) ? out : out.replace(/^#EXT-X-MEDIA:/, '#EXT-X-MEDIA:AUTOSELECT=YES,');
+        }
+      }
+      return out;
     }
 
     // Scelgo la qualità preferita: 1080p > 720p > 480p, fallback al primo trovato
@@ -763,6 +804,12 @@ app.get('/api/status', async (req, res) => {
     pingHost('Solid', `https://${SOLID_HOST}/`),
     pingHost('Nyaa', 'https://nyaa.si/'),
     pingHost('TokyoTosho', 'https://www.tokyotosho.info/'),
+    // Hostname caricato da env (no hardcoded nel repo). Se ICV_HOST non è
+    // settato, mostra comunque la riga ma con stato "env mancante" rosso —
+    // così l'admin del server vede subito che deve configurarlo.
+    process.env.ICV_HOST
+      ? pingHost('IlCorsaroViola', process.env.ICV_HOST)
+      : Promise.resolve({ name: 'IlCorsaroViola', ok: false, status: 0, ms: 0, error: 'ICV_HOST env mancante' }),
   ]);
   // Override GuardaSerie: rispetta vidxgo.isDown() (cooldown post-403 in findStream).
   // Il check /t/603 sopra è il primary indicator del funzionamento reale.
@@ -1373,7 +1420,62 @@ app.get('/debug/corsaro', async (req, res) => {
 });
 
 // Root → /configure
-app.get('/', (req, res) => res.redirect('/configure'));
+// Welcome page con scelta lingua. Senza accept-language hint o se l'utente
+// arriva senza preferenze, mostriamo la pagina con 2 bandiere. Backward compat:
+// chi navigava direttamente a /configure (link salvati, bookmark) non è toccato.
+app.get('/', (req, res) => {
+  res.type('html').send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pezzottio · Choose language / Scegli lingua</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8'%3E%3Crect x='2.5' y='5' width='19' height='13' rx='2.5'/%3E%3Cpath d='M8 21h8M9 18v3M15 18v3' stroke-linecap='round'/%3E%3C/svg%3E">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Bebas+Neue&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background:#000; color:#fff; }
+    .brand { font-family: 'Bebas Neue', sans-serif; font-weight: 900; color:#e50914; letter-spacing:0.02em; text-shadow: 0 4px 24px rgba(229,9,20,0.4); }
+    .bg-fx::before {
+      content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+      background: radial-gradient(50% 60% at 30% 20%, rgba(229,9,20,0.18) 0%, transparent 60%),
+                  radial-gradient(50% 60% at 70% 80%, rgba(229,9,20,0.10) 0%, transparent 60%);
+      filter: blur(20px);
+    }
+    .flag-btn { transition: transform 0.2s, border-color 0.2s; }
+    .flag-btn:hover { transform: translateY(-4px); border-color: rgba(229,9,20,0.5); }
+  </style>
+</head>
+<body class="min-h-screen bg-fx flex items-center justify-center px-4">
+  <main class="max-w-3xl w-full text-center">
+    <h1 class="brand text-6xl md:text-8xl mb-4">PEZZOTTIO</h1>
+    <p class="text-zinc-400 text-sm md:text-base mb-12 tracking-wide uppercase">Choose your language · Scegli la lingua</p>
+
+    <div class="grid sm:grid-cols-2 gap-4 sm:gap-6 max-w-2xl mx-auto">
+      <a href="/configure" class="flag-btn block rounded-xl border-2 border-white/10 bg-white/[0.03] p-8 hover:bg-white/[0.06] no-underline">
+        <div class="text-7xl mb-4">🇮🇹</div>
+        <div class="text-2xl font-bold text-white mb-2">Italiano</div>
+        <div class="text-xs text-zinc-400 leading-relaxed">
+          Stream HTTP italiani · Audio ITA prioritario · AnimeWorld, AnimeSaturn, GuardaSerie, StreamingCommunity
+        </div>
+      </a>
+      <a href="/configure-en" class="flag-btn block rounded-xl border-2 border-white/10 bg-white/[0.03] p-8 hover:bg-white/[0.06] no-underline">
+        <div class="text-7xl mb-4">🇺🇸</div>
+        <div class="text-2xl font-bold text-white mb-2">English</div>
+        <div class="text-xs text-zinc-400 leading-relaxed">
+          HTTP streams · English audio priority · HiAnime, StreamingCommunity (EN track), full torrent coverage
+        </div>
+      </a>
+    </div>
+
+    <div class="text-[11px] text-zinc-600 mt-12">
+      100% free · Open source · <a href="https://github.com/ceres777/pezzottio" target="_blank" rel="noopener" class="hover:text-zinc-400 transition">GitHub</a>
+    </div>
+  </main>
+</body>
+</html>`);
+});
 
 // === EXTRA CATALOG PROXY (/extra/*) ===
 // Proxy completo verso un addon di metadata esterno preconfigurato.
@@ -1383,8 +1485,11 @@ app.get('/', (req, res) => res.redirect('/configure'));
 // passthrough con caching aggressivo.
 const EXTRA_UPSTREAM = process.env.EXTRA_CATALOG_UPSTREAM
   || 'https://aiometadata.elfhosted.com/stremio/3bfc4ec0-ef9d-4703-98ca-ab313631d178';
+// Upstream EN: configurazione AIOMetadata separata (lingua/sources orientati EN).
+// Lo serviamo sotto /extra-en/* con rebranding "Pezzottio Extra (English)".
+const EXTRA_UPSTREAM_EN = process.env.EXTRA_CATALOG_UPSTREAM_EN
+  || 'https://aiometadata.elfhosted.com/stremio/e06851f2-66a3-4cd7-afb9-b80c6a2c9f01';
 
-const _extraCache = new Map();
 function _extraTtl(path) {
   if (/manifest\.json$/.test(path)) return 5 * 60 * 1000;        // 5min
   if (/^\/meta\//.test(path)) return 6 * 60 * 60 * 1000;          // 6h
@@ -1393,56 +1498,80 @@ function _extraTtl(path) {
   return 10 * 60 * 1000;                                          // default
 }
 
-async function _fetchExtra(subpath) {
-  const ckey = subpath;
-  const ttl = _extraTtl(subpath);
-  const hit = _extraCache.get(ckey);
-  if (hit && Date.now() - hit.t < ttl) return hit;
-  try {
-    const r = await fetch(`${EXTRA_UPSTREAM}${subpath}`, {
-      timeout: 8000,
-      headers: { 'Accept': 'application/json', 'User-Agent': 'Pezzottio-Proxy/1.0' },
-    });
-    const body = await r.text();
-    const entry = { body, status: r.status, t: Date.now() };
-    if (r.ok) _extraCache.set(ckey, entry);
-    return entry;
-  } catch (e) {
-    console.error('[extra-proxy]', subpath, e.message);
-    return { body: '{"err":"upstream"}', status: 502, t: Date.now() };
-  }
-}
-
-app.get(/^\/extra(\/.*)?$/, async (req, res) => {
-  const subpath = (req.params[0] || '/').split('?')[0];
-  // Manifest: rebrand
-  if (subpath === '/manifest.json' || subpath === '/') {
-    const r = await _fetchExtra('/manifest.json');
-    if (r.status >= 400) return res.status(r.status).type('application/json').send(r.body);
+// Factory: crea un proxy reusable per qualsiasi upstream AIOMetadata.
+// `brand` definisce il rebranding del manifest (id/name/description).
+function _createExtraProxy({ upstream, brand }) {
+  const cache = new Map();
+  async function fetchPath(subpath) {
+    const ckey = subpath;
+    const ttl = _extraTtl(subpath);
+    const hit = cache.get(ckey);
+    if (hit && Date.now() - hit.t < ttl) return hit;
     try {
-      const m = JSON.parse(r.body);
-      m.id = 'org.pezzottio.extracatalogs';
-      m.name = 'Pezzottio Extra';
-      m.description = 'Catalog Netflix, Prime Video, Disney+, HBO Max, Apple TV+, Crunchyroll integrato in Pezzottio.';
-      m.logo = `${publicBase(req)}/logo.png`;
-      if (m.behaviorHints) {
-        delete m.behaviorHints.configurable;
-        delete m.behaviorHints.configurationRequired;
-      }
-      res.setHeader('Content-Type', 'application/json');
-      res.setHeader('Cache-Control', 'max-age=300, public');
-      return res.send(JSON.stringify(m));
+      const r = await fetch(`${upstream}${subpath}`, {
+        timeout: 8000,
+        headers: { 'Accept': 'application/json', 'User-Agent': 'Pezzottio-Proxy/1.0' },
+      });
+      const body = await r.text();
+      const entry = { body, status: r.status, t: Date.now() };
+      if (r.ok) cache.set(ckey, entry);
+      return entry;
     } catch (e) {
-      return res.status(502).json({ err: 'manifest parse failed' });
+      console.error(`[${brand.id}]`, subpath, e.message);
+      return { body: '{"err":"upstream"}', status: 502, t: Date.now() };
     }
   }
-  // Tutto il resto: passthrough
-  const r = await _fetchExtra(subpath);
-  res.status(r.status || 200);
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Cache-Control', `max-age=${Math.floor(_extraTtl(subpath) / 1000)}, public`);
-  res.send(r.body);
-});
+  return async (req, res) => {
+    const subpath = (req.params[0] || '/').split('?')[0];
+    // Manifest: rebrand
+    if (subpath === '/manifest.json' || subpath === '/') {
+      const r = await fetchPath('/manifest.json');
+      if (r.status >= 400) return res.status(r.status).type('application/json').send(r.body);
+      try {
+        const m = JSON.parse(r.body);
+        m.id = brand.id;
+        m.name = brand.name;
+        m.description = brand.description;
+        m.logo = `${publicBase(req)}/logo.png`;
+        if (m.behaviorHints) {
+          delete m.behaviorHints.configurable;
+          delete m.behaviorHints.configurationRequired;
+        }
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'max-age=300, public');
+        return res.send(JSON.stringify(m));
+      } catch (e) {
+        return res.status(502).json({ err: 'manifest parse failed' });
+      }
+    }
+    // Tutto il resto: passthrough
+    const r = await fetchPath(subpath);
+    res.status(r.status || 200);
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', `max-age=${Math.floor(_extraTtl(subpath) / 1000)}, public`);
+    res.send(r.body);
+  };
+}
+
+// /extra/* → catalogo IT (Netflix/Prime/Disney+/HBO/Apple TV+/Crunchyroll, descrizioni italiane)
+app.get(/^\/extra(\/.*)?$/, _createExtraProxy({
+  upstream: EXTRA_UPSTREAM,
+  brand: {
+    id: 'org.pezzottio.extracatalogs',
+    name: 'Pezzottio Extra',
+    description: 'Catalog Netflix, Prime Video, Disney+, HBO Max, Apple TV+, Crunchyroll integrato in Pezzottio.',
+  },
+}));
+
+// /extra-en/* → catalogo EN (config AIOMetadata separata, lingua/source EN-oriented)
+app.get(/^\/extra-en(\/.*)?$/, _createExtraProxy({
+  upstream: EXTRA_UPSTREAM_EN,
+  brand: {
+    id: 'org.pezzottio.extracatalogs.en',
+    name: 'Pezzottio Extra (English)',
+    description: 'Netflix, Prime Video, Disney+, HBO Max, Apple TV+, Crunchyroll catalog — English edition integrated in Pezzottio.',
+  },
+}));
 
 // Manifest dinamico: rimuove i cataloghi Pezzottio Anime se l'utente ha
 // disabilitato l'anime nella sua config (httpAnime=false). Catalogo e stream
