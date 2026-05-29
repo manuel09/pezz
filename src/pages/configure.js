@@ -347,135 +347,56 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
         </div>
       </div>
 
-      <!-- MOCKUP STREAM LIST -->
+      <!-- DONAZIONI tramite buono regalo Amazon via Bitrefill.
+           Mockup rimosso (richiesta utente): la colonna destra ora ha SOLO
+           questa card → hero bilanciata con la colonna sinistra (testo+CTA).
+           Tipografia rinforzata: header sezioni in bold (font-semibold) e
+           font-size leggibile (text-sm). -->
       <div class="relative">
         <div class="absolute inset-0 -z-10" style="background:radial-gradient(60% 60% at 50% 50%, rgba(229,9,20,0.20) 0%, transparent 70%); filter:blur(40px);"></div>
-        <div class="mockup">
-          <div class="mockup-header">
-            <span class="mockup-dot" style="background:#ff5f56"></span>
-            <span class="mockup-dot" style="background:#ffbd2e"></span>
-            <span class="mockup-dot" style="background:#27c93f"></span>
-            <span class="mono text-[10px] text-zinc-500 ml-auto">Stremio · La mummia</span>
+        <div id="donate-gift" class="card p-5" style="border-left: 3px solid #ff9900;">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="text-xl">🎁</span>
+            <span class="font-semibold text-zinc-100 text-base">Sostieni Pezzottio</span>
           </div>
-          <!-- HTTP -->
-          <div class="mockup-row">
-            <div class="mockup-name">
-              <span class="q">Pezzottio GS</span>
-              <span style="color:rgba(255,255,255,0.5);font-size:10px;">📺 HTTP</span>
-            </div>
-            <div class="mockup-title">
-              <span class="t">La mummia - Il ritorno (2001)</span>
-              <span class="meta">📡 GuardaSerie · streaming diretto</span><br>
-              <span class="mockup-flag">🇮🇹 AUDIO ITA</span>
-            </div>
+          <div class="text-sm text-zinc-300 leading-relaxed mb-4">
+            Server, banda e dominio si pagano. Puoi donare con un <strong class="text-white">buono regalo Amazon</strong> di qualsiasi taglio (da €5 in su) — semplice, anonimo, niente account.
           </div>
-          <div class="mockup-row">
-            <div class="mockup-name">
-              <span class="q">Pezzottio SC</span>
-              <span style="color:rgba(255,255,255,0.5);font-size:10px;">📺 HTTP</span>
-            </div>
-            <div class="mockup-title">
-              <span class="t">La mummia - Il ritorno (2001)</span>
-              <span class="meta">📡 StreamingCommunity · streaming diretto</span><br>
-              <span class="mockup-flag">🇮🇹 AUDIO ITA</span>
-            </div>
-          </div>
-          <!-- 4K ITA -->
-          <div class="mockup-row">
-            <div class="mockup-name">
-              <span class="q">Pezzottio TB</span>
-              <span style="color:rgba(255,255,255,0.5);font-size:10px;">📺 4K HDR</span>
-            </div>
-            <div class="mockup-title">
-              <span class="t">The.Mummy.Returns.2001.UHD.2160p.BluRay</span>
-              <span class="meta">📦 9.46 GB · Comet · BluRay HEVC HDR</span><br>
-              <span class="mockup-flag">🇮🇹 AUDIO ITA</span>
-            </div>
-          </div>
-          <!-- 1080 ITA -->
-          <div class="mockup-row">
-            <div class="mockup-name">
-              <span class="q">Pezzottio TB</span>
-              <span style="color:rgba(255,255,255,0.5);font-size:10px;">📺 1080p</span>
-            </div>
-            <div class="mockup-title">
-              <span class="t">The Mummy II 2001 BDRip ITA ENG x264 AAC</span>
-              <span class="meta">📦 7.49 GB · Knaben · BluRay AVC · 24👤</span><br>
-              <span class="mockup-flag">🇮🇹 AUDIO ITA</span>
-            </div>
-          </div>
-          <!-- 4K SUB ITA -->
-          <div class="mockup-row">
-            <div class="mockup-name">
-              <span class="q">Pezzottio TB</span>
-              <span style="color:rgba(255,255,255,0.5);font-size:10px;">📺 4K</span>
-            </div>
-            <div class="mockup-title">
-              <span class="t">The.Mummy.Returns.2001.MULTi.2160p.BluRay REMUX</span>
-              <span class="meta">📦 67.5 GB · MediaFusion · REMUX DV HDR10+</span><br>
-              <span class="mockup-sub">📝 SUB ITA</span>
-            </div>
-          </div>
-          <!-- 1080 SUB ITA -->
-          <div class="mockup-row">
-            <div class="mockup-name">
-              <span class="q">Pezzottio TB</span>
-              <span style="color:rgba(255,255,255,0.5);font-size:10px;">📺 1080p</span>
-            </div>
-            <div class="mockup-title">
-              <span class="t">The.Mummy.Returns.2001.1080p.NF.WEB-DL.DDP5.1</span>
-              <span class="meta">📦 5.2 GB · Torrentio · WEB-DL HEVC</span><br>
-              <span class="mockup-sub">📝 SUB ITA</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- DONAZIONI tramite buono regalo Amazon via Bitrefill.
-             Posizionata sotto il mockup per bilanciare la colonna destra
-             rispetto alla colonna sinistra (testo + CTA). -->
-        <div id="donate-gift" class="card px-4 py-3 mt-5" style="border-left: 3px solid #ff9900;">
-          <div class="flex items-center gap-2 mb-2">
-            <span class="text-base">🎁</span>
-            <span class="font-semibold text-zinc-100 text-sm">Sostieni Pezzottio</span>
-          </div>
-          <div class="text-xs text-zinc-400 leading-relaxed mb-3">
-            Server, banda e dominio si pagano. Puoi donare con un <strong class="text-zinc-200">buono regalo Amazon</strong> di qualsiasi taglio (da €5 in su) — semplice, anonimo, niente account.
-          </div>
-          <a href="https://www.bitrefill.com/it/it/gift-cards/amazon_it-italy/" target="_blank" rel="noopener" class="inline-flex items-center gap-2 px-4 py-2 rounded text-sm font-semibold text-black transition hover:opacity-90" style="background:#ff9900;">
+          <a href="https://www.bitrefill.com/it/it/gift-cards/amazon_it-italy/" target="_blank" rel="noopener" class="inline-flex items-center gap-2 px-4 py-2.5 rounded text-sm font-semibold text-black transition hover:opacity-90" style="background:#ff9900;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3.5 18.5C7 22 17 22 20.5 18.5l-1-1C16.5 21 7.5 21 4.5 17.5l-1 1zM22 16l-1-3-3 1 1 3 3-1z"/></svg>
             Acquista su Bitrefill
           </a>
-          <div class="mt-3 pt-3 border-t border-white/[0.06]">
-            <div class="text-[11px] font-medium text-zinc-200 mb-1.5">Come funziona</div>
-            <div class="pl-1 text-[11px] text-zinc-400 leading-relaxed space-y-1">
+          <div class="mt-4 pt-4 border-t border-white/[0.08]">
+            <div class="font-semibold text-zinc-100 text-base mb-2">Come funziona</div>
+            <div class="text-sm text-zinc-300 leading-relaxed space-y-1.5">
               <div>1. Apri il link Bitrefill qui sopra → scegli il taglio (€5, €10, €25, €50…)</div>
-              <div>2. Click <strong class="text-zinc-200">Acquista ora</strong></div>
-              <div>3. Spunta <strong class="text-zinc-200">Invia come regalo</strong></div>
+              <div>2. Click <strong class="text-white">Acquista ora</strong></div>
+              <div>3. Spunta <strong class="text-white">Invia come regalo</strong></div>
               <div>4. Inserisci l'email destinatario:</div>
-              <div class="flex items-center gap-2 mt-1">
-                <code class="mono text-[10px] bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 text-zinc-200 flex-1 min-w-0 truncate">pezz8io@proton.me</code>
-                <button data-copy-addr="pezz8io@proton.me" class="copy-addr-btn text-[10px] px-2 py-1 rounded font-medium text-black transition hover:opacity-90 whitespace-nowrap shrink-0" style="background:#ff9900;">Copia</button>
+              <div class="flex items-center gap-2 mt-2">
+                <code class="mono text-xs bg-white/[0.06] border border-white/[0.10] rounded px-2.5 py-1.5 text-zinc-100 flex-1 min-w-0 truncate">pezz8io@proton.me</code>
+                <button data-copy-addr="pezz8io@proton.me" class="copy-addr-btn text-xs px-3 py-1.5 rounded font-semibold text-black transition hover:opacity-90 whitespace-nowrap shrink-0" style="background:#ff9900;">Copia</button>
               </div>
-              <div class="text-[10px] text-zinc-500 pt-1">Paghi con carta, PayPal, Apple/Google Pay o crypto — quello che preferisci. Il buono arriva via email diretto a Pezzottio.</div>
+              <div class="text-xs text-zinc-400 pt-1.5">Paghi con carta, PayPal, Apple/Google Pay o crypto — quello che preferisci. Il buono arriva via email diretto a Pezzottio.</div>
             </div>
           </div>
-          <div class="mt-3 pt-3 border-t border-white/[0.06]">
-            <div class="text-[11px] font-medium text-zinc-200 mb-1.5">Oppure in crypto</div>
-            <div class="space-y-1">
+          <div class="mt-4 pt-4 border-t border-white/[0.08]">
+            <div class="font-semibold text-zinc-100 text-base mb-2">Oppure in crypto</div>
+            <div class="space-y-1.5">
               <div class="flex items-center gap-2">
-                <span class="text-[10px] font-semibold text-zinc-300 w-12 shrink-0">BTC</span>
-                <code class="mono text-[10px] bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 text-zinc-300 flex-1 min-w-0 truncate" title="bc1qcu9ch68gua0u4pgfqzlxshtdv99s06pwyhu4mm">bc1qcu9ch68gua0u4pgfqzlxshtdv99s06pwyhu4mm</code>
-                <button data-copy-addr="bc1qcu9ch68gua0u4pgfqzlxshtdv99s06pwyhu4mm" class="copy-addr-btn text-[10px] px-2 py-1 rounded bg-white/[0.04] border border-white/[0.08] text-zinc-300 hover:bg-white/[0.08] transition whitespace-nowrap shrink-0">Copia</button>
+                <span class="text-sm font-semibold text-zinc-100 w-16 shrink-0">BTC</span>
+                <code class="mono text-xs bg-white/[0.06] border border-white/[0.10] rounded px-2.5 py-1.5 text-zinc-200 flex-1 min-w-0 truncate" title="bc1qcu9ch68gua0u4pgfqzlxshtdv99s06pwyhu4mm">bc1qcu9ch68gua0u4pgfqzlxshtdv99s06pwyhu4mm</code>
+                <button data-copy-addr="bc1qcu9ch68gua0u4pgfqzlxshtdv99s06pwyhu4mm" class="copy-addr-btn text-xs px-3 py-1.5 rounded bg-white/[0.06] border border-white/[0.10] text-zinc-200 hover:bg-white/[0.10] transition whitespace-nowrap shrink-0">Copia</button>
               </div>
               <div class="flex items-center gap-2">
-                <span class="text-[10px] font-semibold text-zinc-300 w-12 shrink-0">ETH</span>
-                <code class="mono text-[10px] bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 text-zinc-300 flex-1 min-w-0 truncate" title="0x8915E5A201d66d55C91F9828c580931dB92fD82a">0x8915E5A201d66d55C91F9828c580931dB92fD82a</code>
-                <button data-copy-addr="0x8915E5A201d66d55C91F9828c580931dB92fD82a" class="copy-addr-btn text-[10px] px-2 py-1 rounded bg-white/[0.04] border border-white/[0.08] text-zinc-300 hover:bg-white/[0.08] transition whitespace-nowrap shrink-0">Copia</button>
+                <span class="text-sm font-semibold text-zinc-100 w-16 shrink-0">ETH</span>
+                <code class="mono text-xs bg-white/[0.06] border border-white/[0.10] rounded px-2.5 py-1.5 text-zinc-200 flex-1 min-w-0 truncate" title="0x8915E5A201d66d55C91F9828c580931dB92fD82a">0x8915E5A201d66d55C91F9828c580931dB92fD82a</code>
+                <button data-copy-addr="0x8915E5A201d66d55C91F9828c580931dB92fD82a" class="copy-addr-btn text-xs px-3 py-1.5 rounded bg-white/[0.06] border border-white/[0.10] text-zinc-200 hover:bg-white/[0.10] transition whitespace-nowrap shrink-0">Copia</button>
               </div>
               <div class="flex items-center gap-2">
-                <span class="text-[10px] font-semibold text-zinc-300 w-12 shrink-0">Solana</span>
-                <code class="mono text-[10px] bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 text-zinc-300 flex-1 min-w-0 truncate" title="9U21MvZGgGhXpjuTz9MNfYorTQEYhkfd1LtWfjA9ib7W">9U21MvZGgGhXpjuTz9MNfYorTQEYhkfd1LtWfjA9ib7W</code>
-                <button data-copy-addr="9U21MvZGgGhXpjuTz9MNfYorTQEYhkfd1LtWfjA9ib7W" class="copy-addr-btn text-[10px] px-2 py-1 rounded bg-white/[0.04] border border-white/[0.08] text-zinc-300 hover:bg-white/[0.08] transition whitespace-nowrap shrink-0">Copia</button>
+                <span class="text-sm font-semibold text-zinc-100 w-16 shrink-0">Solana</span>
+                <code class="mono text-xs bg-white/[0.06] border border-white/[0.10] rounded px-2.5 py-1.5 text-zinc-200 flex-1 min-w-0 truncate" title="9U21MvZGgGhXpjuTz9MNfYorTQEYhkfd1LtWfjA9ib7W">9U21MvZGgGhXpjuTz9MNfYorTQEYhkfd1LtWfjA9ib7W</code>
+                <button data-copy-addr="9U21MvZGgGhXpjuTz9MNfYorTQEYhkfd1LtWfjA9ib7W" class="copy-addr-btn text-xs px-3 py-1.5 rounded bg-white/[0.06] border border-white/[0.10] text-zinc-200 hover:bg-white/[0.10] transition whitespace-nowrap shrink-0">Copia</button>
               </div>
             </div>
           </div>
