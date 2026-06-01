@@ -9,7 +9,7 @@ Film, serie, anime — tutti in italiano, prima possibile.
 **Una sola installazione. Zero proxy da configurare. Zero Docker.**
 
 [![Try it](https://img.shields.io/badge/▶_PROVALO_ORA-pezz8io.dpdns.org-e50914?style=for-the-badge)](https://pezz8io.dpdns.org/configure)
-[![Telegram](https://img.shields.io/badge/Supporto-@Mbhere1-26a5e4?style=for-the-badge&logo=telegram)](https://t.me/Mbhere1)
+
 
 [**Cosa fa**](#-cosa-fa) · [**Provalo**](#-provalo-in-30-secondi) · [**Domande**](#-domande-frequenti)
 
