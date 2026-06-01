@@ -161,10 +161,6 @@ Deploy gratuito su Render: il repo include `render.yaml`. Fork → New Web Servi
 
 ---
 
-## 📞 Supporto
-
-- **Telegram**: [@Mbhere1](https://t.me/Mbhere1) — per qualsiasi problema, segnalazione, richiesta
-- **Issues GitHub**: [github.com/ceres777/pezzottio/issues](https://github.com/ceres777/pezzottio/issues)
 
 ---
 
