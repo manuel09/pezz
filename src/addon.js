@@ -13,7 +13,6 @@ const kitsu = require('./kitsu');
 const vidxgo = require('./providers/vidxgo');
 const streamingcommunity = require('./providers/streamingcommunity');
 const altadefinizione = require('./providers/altadefinizione');
-const guardahd = require('./providers/guardahd');
 const animepahe = require('./providers/animepahe');
 const external = require('./providers/external');
 const vidxgoProvider = require('./providers/vidxgo-provider');
@@ -198,7 +197,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
     // VidXgo (GS) è IT-only → skippato se wantIT=false. SC ha multi-audio
     // ITA+ENG → sempre chiamato (defaultAudio gestito a livello di proxy master).
     // Se onlyHttp, skippiamo torrent search e external addon.
-    const [torrentsRaw, externalStreams, vxStream, scStream, adnStream, ghStream, vxEpStream, ccStream, slugsResult] = await Promise.all([
+    const [torrentsRaw, externalStreams, vxStream, scStream, adnStream, vxEpStream, ccStream, slugsResult] = await Promise.all([
       onlyHttp ? Promise.resolve([]) : raceTimeout(searchTorrents(meta, type, imdbId), []),
       onlyHttp ? Promise.resolve([]) : raceTimeout(external.searchExternal(type, fullStremioId).catch(() => []), [], CAP_MS_EXTERNAL),
       (!isAnime && imdbId && wantIT)
@@ -209,9 +208,6 @@ builder.defineStreamHandler(async ({ type, id }) => {
         : Promise.resolve(null),
       (!isAnime && imdbId)
         ? raceTimeout(altadefinizione.findStream(imdbId, meta.season, meta.episode, isMovie).catch(() => null), null)
-        : Promise.resolve(null),
-      (!isAnime && imdbId)
-        ? raceTimeout(guardahd.findStream(imdbId, meta.season, meta.episode, isMovie).catch(() => null), null)
         : Promise.resolve(null),
       (!isAnime && imdbId)
         ? raceTimeout(vidxgoProvider.findStream(imdbId, meta.season, meta.episode, isMovie).catch(() => null), null)
@@ -337,19 +333,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
         quality: adnStream.quality || '720p',
       });
     }
-    // GuardaHD: stream diretto CDN con headers.
-    if (ghStream) {
-      httpStreams.push({
-        provider: 'GH',
-        url: ghStream.masterUrl,
-        proxyHeaders: ghStream.cdnHeaders,
-        name: meta.title,
-        italian: true,
-        italianSub: false,
-        quality: null,
-      });
-    }
-    // CinemaCity: direct CDN + proxyHeaders (come GH).
+    // CinemaCity: direct CDN + proxyHeaders.
     if (ccStream) {
       httpStreams.push({
         provider: 'CC',
@@ -605,7 +589,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
     const cacheHints = { cacheMaxAge: 10 * 60, staleRevalidate: 60, staleError: 60 * 60 };
 
     // Stream HTTP diretti. Vanno in cima.
-    const PROVIDER_LABELS = { AW: 'AnimeWorld', AS: 'AnimeSaturn', AU: 'AnimeUnity', GS: 'GuardaSerie', VX: 'VidXgo', SC: 'StreamingCommunity', ADN: 'Altadefinizione', GH: 'GuardaHD', CC: 'CinemaCity' };
+    const PROVIDER_LABELS = { AW: 'AnimeWorld', AS: 'AnimeSaturn', AU: 'AnimeUnity', GS: 'GuardaSerie', VX: 'VidXgo', SC: 'StreamingCommunity', ADN: 'Altadefinizione', CC: 'CinemaCity' };
     function formatHttpStream(s) {
       const langSingle = lang === 'en'
         ? (s.english ? 'ENG' : s.englishSub ? 'Sub ENG' : null)
@@ -671,7 +655,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
     const httpAnimeOn = !(userCfgEarly.httpAnime === false || userCfgEarly.httpAnime === 'false');
 
     const ANIME_PROVS = new Set(['AW', 'AS', 'AU']);
-    const FILM_PROVS = new Set(['GS', 'VX', 'SC', 'ADN', 'GH']);
+    const FILM_PROVS = new Set(['GS', 'VX', 'SC', 'ADN']);
 
     // Hide flags content-type aware:
     //  - ANIME:   torrent sempre on, HTTP segue httpAnime, filterMode ignorato
