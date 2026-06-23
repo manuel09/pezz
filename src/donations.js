@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 
 const PAYBLIS_ENDPOINT = 'https://pay.payblis.com/api/payment_gateway.php';
-const STORE_NAME = process.env.PAYBLIS_STORE_NAME || 'Pezzottio';
+const STORE_NAME = process.env.PAYBLIS_STORE_NAME || 'ItaHub';
 const SANDBOX = (process.env.PAYBLIS_SANDBOX || '').toLowerCase() === 'true';
 
 // PHP serialize() per associative arrays con solo string keys/values.
@@ -70,7 +70,7 @@ function buildCheckoutUrl({ amount, email, name, userIP, publicHost }) {
     MerchantKey: merchantKey,
     amount: Number(amount).toFixed(2),
     currency: 'EUR',
-    product_name: 'Donazione Pezzottio',
+    product_name: 'Donazione ItaHub',
     method: 'credit_cards',
     RefOrder: refOrder,
     Customer_Email: String(email).trim(),
@@ -113,7 +113,7 @@ function verifyIpnSignature(body, receivedSignature) {
 // Log donazioni su file locale per tracking (no DB).
 // Append-only JSON Lines. Una riga per evento IPN.
 const DONATIONS_LOG = process.env.DONATIONS_LOG_PATH
-  || path.join(process.env.HOME || '/tmp', '.pezzottio-donations.log');
+  || path.join(process.env.HOME || '/tmp', '.itahub-donations.log');
 
 function logDonation(entry) {
   try {

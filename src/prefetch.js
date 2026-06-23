@@ -34,6 +34,9 @@ function _markPrefetched(key) {
   _prefetched.set(key, Date.now());
 }
 
+function wasPrefetched(key) { return _wasPrefetched(key); }
+function markPrefetched(key) { _markPrefetched(key); }
+
 // Prefetch del prossimo episodio.
 // Args:
 //   imdbId: 'tt0903747' (id base senza :S:E)
@@ -85,7 +88,7 @@ async function prefetchNext({ imdbId, season, episode, userCfg, resolveStreams }
     data.append('allow_zip', 'false');
     const r = await fetch('https://api.torbox.app/v1/api/torrents/createtorrent', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${userCfg.tb}`, 'User-Agent': 'pezzottio-prefetch' },
+      headers: { Authorization: `Bearer ${userCfg.tb}`, 'User-Agent': 'itahub-prefetch' },
       body: data,
       timeout: 5000,
     });
@@ -100,4 +103,4 @@ async function prefetchNext({ imdbId, season, episode, userCfg, resolveStreams }
   }
 }
 
-module.exports = { prefetchNext };
+module.exports = { prefetchNext, wasPrefetched, markPrefetched };

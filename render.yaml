@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: pezzottio
+    name: itahub
     runtime: node
     plan: free
     buildCommand: npm install
@@ -11,5 +11,9 @@ services:
       - key: MAX_RESULTS
         value: "25"
       - key: PUBLIC_HOST
-        value: https://pezzottio.onrender.com
+        value: https://itahub.onrender.com
+      # WARP non funziona su Render (no TUN/binary). Lascia disabilitato.
+      # Se hai un VPS, metti WARP_CONFIG=auto per bypassare Cloudflare.
+      - key: WARP_CONFIG
+        value: off
     healthCheckPath: /manifest.json

@@ -77,7 +77,7 @@ async function fetchKitsu(path, ttl) {
     const r = await fetch(url, {
       headers: {
         'Accept': 'application/vnd.api+json',
-        'User-Agent': 'Pezzottio/1.0',
+        'User-Agent': 'ItaHub/1.0',
       },
       timeout: TIMEOUT,
     });

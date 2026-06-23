@@ -7,7 +7,7 @@
 //   4. Filtra episodio richiesto (number == episode)
 //   5. GET /embed-url/{episode_id} → URL https://vixcloud.co/embed/{scws_id}?token=...
 //   6. GET embed URL → HTML con window.masterPlaylist {params:{token, expires}, url}
-//   7. Compongo master URL → ritorno a Pezzottio (che lo proxy via /hls/au/*)
+//   7. Compongo master URL → ritorno a ItaHub (che lo proxy via /hls/au/*)
 
 const fetch = require('node-fetch');
 
@@ -34,12 +34,21 @@ let session = null;
 let sessionAt = 0;
 async function getSession() {
   if (session && Date.now() - sessionAt < 30 * 60 * 1000) return session;
+  console.log('[AU] creating new session...');
   const r = await fetch(`${BASE}/`, { headers: COMMON_HEADERS, timeout: TIMEOUT });
+  if (!r.ok) {
+    console.error('[AU] session fetch failed:', r.status);
+    throw new Error(`AU session fetch -> ${r.status}`);
+  }
   const setCookie = r.headers.raw()['set-cookie'] || [];
   const cookieStr = setCookie.map((c) => c.split(';')[0]).join('; ');
   const html = await r.text();
   const tokenM = html.match(/csrf-token"\s+content="([^"]+)"/);
-  if (!tokenM) throw new Error('AU: no CSRF token');
+  if (!tokenM) {
+    console.error('[AU] CSRF token not found in HTML. HTML len:', html.length);
+    throw new Error('AU: no CSRF token');
+  }
+  console.log('[AU] session OK. CSRF:', tokenM[1].substring(0, 8) + '...');
   session = { cookie: cookieStr, csrf: tokenM[1] };
   sessionAt = Date.now();
   return session;
@@ -65,15 +74,16 @@ function sanitizeForSearch(title) {
 async function searchAU(title) {
   const s = await getSession();
   const body = JSON.stringify({ title });
-  const r = await fetch(`${BASE}/archivio/get-animes`, {
+  const r = await auFetch(`${BASE}/archivio/get-animes`, {
     method: 'POST',
     headers: {
-      ...COMMON_HEADERS,
       'Content-Type': 'application/json',
       'X-CSRF-TOKEN': s.csrf,
       'X-Requested-With': 'XMLHttpRequest',
-      'Referer': `${BASE}/archivio`,
       'Cookie': s.cookie,
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'same-origin',
     },
     body,
     timeout: TIMEOUT,
@@ -232,7 +242,7 @@ async function pickRecord(title, season) {
 async function getEpisodes(record) {
   const s = await getSession();
   const url = `${BASE}/anime/${record.id}-${record.slug}`;
-  const r = await fetch(url, { headers: { ...COMMON_HEADERS, 'Cookie': s.cookie }, timeout: TIMEOUT });
+  const r = await auFetch(url, { headers: { 'Cookie': s.cookie }, timeout: TIMEOUT });
   if (!r.ok) throw new Error(`AU anime page -> ${r.status}`);
   const html = await r.text();
   const m = html.match(/episodes="([^"]+)"/);
@@ -247,12 +257,13 @@ async function getEpisodes(record) {
 // Ottieni embed URL VixCloud per un episodio
 async function getEmbedUrl(episodeId) {
   const s = await getSession();
-  const r = await fetch(`${BASE}/embed-url/${episodeId}`, {
+  const r = await auFetch(`${BASE}/embed-url/${episodeId}`, {
     headers: {
-      ...COMMON_HEADERS,
       'X-Requested-With': 'XMLHttpRequest',
       'Cookie': s.cookie,
-      'Referer': `${BASE}/`,
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'same-origin',
     },
     timeout: TIMEOUT,
   });
@@ -262,20 +273,29 @@ async function getEmbedUrl(episodeId) {
 
 // Parse master playlist URL dall'embed VixCloud
 async function getMasterUrlFromEmbed(embedUrl) {
+  console.log('[AU] extracting master from:', embedUrl);
   const r = await fetch(embedUrl, {
     headers: { ...COMMON_HEADERS, 'Referer': `${BASE}/` },
     timeout: TIMEOUT,
   });
-  if (!r.ok) throw new Error(`AU embed -> ${r.status}`);
+  if (!r.ok) {
+    console.error('[AU] embed fetch failed:', r.status);
+    throw new Error(`AU embed -> ${r.status}`);
+  }
   const html = await r.text();
   const tokenM = html.match(/['"]token['"]\s*:\s*['"]([^'"]+)['"]/);
   const expiresM = html.match(/['"]expires['"]\s*:\s*['"]([^'"]+)['"]/);
   const urlM = html.match(/window\.masterPlaylist\s*=[\s\S]*?url\s*:\s*['"]([^'"]+)['"]/);
-  if (!tokenM || !expiresM || !urlM) throw new Error('AU: masterPlaylist parse failed');
+  if (!tokenM || !expiresM || !urlM) {
+    console.error('[AU] masterPlaylist parse failed. HTML len:', html.length);
+    throw new Error('AU: masterPlaylist parse failed');
+  }
   const fhdM = html.match(/window\.canPlayFHD\s*=\s*(true|false)/);
   const fhd = fhdM ? fhdM[1] === 'true' : true;
   const sep = urlM[1].includes('?') ? '&' : '?';
-  return `${urlM[1]}${sep}token=${tokenM[1]}&expires=${expiresM[1]}${fhd ? '&h=1' : ''}`;
+  const final = `${urlM[1]}${sep}token=${tokenM[1]}&expires=${expiresM[1]}${fhd ? '&h=1' : ''}`;
+  console.log('[AU] master extracted:', final.substring(0, 80));
+  return final;
 }
 
 const masterCache = new Map();
@@ -314,8 +334,8 @@ async function getMasterUrlCached(animeId, _season, episodeNum, _isMovie) {
 async function fetchEpisodesForAnimeId(animeId) {
   const s = await getSession();
   // Uso slug placeholder "x" — AnimeUnity redirige al canonico
-  const r = await fetch(`${BASE}/anime/${animeId}-x`, {
-    headers: { ...COMMON_HEADERS, 'Cookie': s.cookie },
+  const r = await auFetch(`${BASE}/anime/${animeId}-x`, {
+    headers: { 'Cookie': s.cookie },
     timeout: TIMEOUT,
     redirect: 'follow',
   });

@@ -592,7 +592,7 @@ async function getStreamUrlFromExisting(torrent, season, episode) {
 // FAST PATH — API esterna che ritorna lista torrent + flag cached_rd
 // pre-computato. Saltiamo completamente il batch scraper + mylist verify.
 // ─────────────────────────────────────────────────────────────────────
-const RD_CACHE_API = process.env.RD_CACHE_API || 'http://158.101.170.131:8321';
+const RD_CACHE_API = process.env.RD_CACHE_API;
 const _findCachedCache = new Map(); // key: kind:tmdb:s:e → { v, t }
 const _FIND_TTL = 5 * 60 * 1000; // 5 min
 
@@ -605,6 +605,7 @@ async function findCachedByTmdb(tmdbId, season, episode, isMovie) {
   const kind = isMovie ? 'movie' : 'tv';
   const qid = isMovie ? String(tmdbId) : `${tmdbId}:${season || 1}:${episode || 1}`;
   const ckey = `${kind}:${qid}`;
+  if (!RD_CACHE_API) return [];
   const hit = _findCachedCache.get(ckey);
   if (hit && Date.now() - hit.t < _FIND_TTL) return hit.v;
   try {

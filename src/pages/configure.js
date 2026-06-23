@@ -1,14 +1,15 @@
-function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta, prefetch, httpAnime }) {
+function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta, prefetch, httpAnime, animeCatalog }) {
   const ord = order || 'smart';
   // Backward compat: aios:true legacy → style='aios'
-  const st = style || (aios === true || aios === 'true' ? 'aios' : 'pezzottio');
+  const st = style || (aios === true || aios === 'true' ? 'aios' : 'itahub');
   // Backward compat: onlyTorrent:true legacy → filter='torrent'
   let flt = filter || 'all';
   if (onlyTorrent === true || onlyTorrent === 'true') flt = 'torrent';
   const ita = fullIta === true || fullIta === 'true';
   const pf = prefetch === true || prefetch === 'true';
-  // Default ON: anime abilitato (catalogo Pezzottio Anime + stream HTTP AW/AS/AU)
-  const animeOn = !(httpAnime === false || httpAnime === 'false');
+  // Default ON: stream HTTP AW/AS/AU (separato dal catalogo anime)
+  const httpAnimeOn = !(httpAnime === false || httpAnime === 'false');
+  const catAnimeOn = !(animeCatalog === false || animeCatalog === 'false');
   const hostOnly = String(base || '').replace(/^https?:\/\//i, '');
   const version = require('../../package.json').version;
   return /* html */ `<!DOCTYPE html>
@@ -16,7 +17,7 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Pezzottio</title>
+  <title>ItaHub</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8'%3E%3Crect x='2.5' y='5' width='19' height='13' rx='2.5'/%3E%3Cpath d='M8 21h8M9 18v3M15 18v3' stroke-linecap='round'/%3E%3C/svg%3E">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
@@ -62,7 +63,7 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
       background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.7) 100%);
     }
 
-    /* Logo Pezzottio stile Netflix */
+    /* Logo ItaHub stile Netflix */
     .brand-wordmark {
       font-family: 'Bebas Neue', 'Inter', sans-serif;
       font-weight: 900;
@@ -262,6 +263,27 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
       text-transform: uppercase; letter-spacing: 0.04em;
     }
     .trust-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: #10b981; }
+
+    /* Profile manager */
+    .pm-profile-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border-radius: 7px;
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    }
+    .pm-profile-row .av {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: rgba(229,9,20,0.20); color: var(--red);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 800; flex-shrink: 0;
+    }
+    .pm-profile-row .name { flex: 1; font-size: 13px; color: #fff; font-weight: 600; }
+    .pm-profile-row .del {
+      width: 24px; height: 24px; border-radius: 4px;
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+      color: #888; cursor: pointer; font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .pm-profile-row .del:hover { background: rgba(239,68,68,0.15); color: #fca5a5; border-color: rgba(239,68,68,0.30); }
   </style>
 </head>
 <body class="min-h-screen">
@@ -284,7 +306,7 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
   <nav class="border-b border-white/[0.06]">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
       <div class="flex items-center gap-4">
-        <img src="/pezzottio-logo.png" alt="PEZZOTTIO" class="h-7 md:h-8 select-none" draggable="false" />
+        <img src="/itahub-logo.png" alt="ITAHUB" class="h-7 md:h-8 select-none" draggable="false" />
         <span class="mono text-[10px] text-zinc-600 hidden md:inline">v${version}</span>
       </div>
       <div class="flex items-center gap-3">
@@ -293,7 +315,7 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0a12 12 0 00-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 01.171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
           Supporto
         </a>
-        <a href="https://github.com/ceres777/pezzottio" target="_blank" rel="noopener" class="text-xs text-zinc-400 hover:text-white transition flex items-center gap-1.5">
+        <a href="https://github.com/manuel09/pezz" target="_blank" rel="noopener" class="text-xs text-zinc-400 hover:text-white transition flex items-center gap-1.5">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.57.1.78-.25.78-.55v-2.13c-3.2.7-3.87-1.36-3.87-1.36-.52-1.34-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.4-5.25 5.69.41.36.78 1.07.78 2.15v3.19c0 .31.21.66.79.55C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5z"/></svg>
           GitHub
         </a>
@@ -357,7 +379,7 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
         <div id="donate-gift" class="card p-5" style="border-left: 3px solid #ff9900;">
           <div class="flex items-center gap-2 mb-3">
             <span class="text-xl">🎁</span>
-            <span class="font-semibold text-zinc-100 text-base">Sostieni Pezzottio</span>
+            <span class="font-semibold text-zinc-100 text-base">Sostieni ItaHub</span>
           </div>
           <div class="text-sm text-zinc-300 leading-relaxed mb-4">
             Server, banda e dominio si pagano. Puoi donare con un <strong class="text-white">buono regalo Amazon</strong> di qualsiasi taglio (da €5 in su) — semplice, anonimo, niente account.
@@ -374,10 +396,10 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
               <div>3. Spunta <strong class="text-white">Invia come regalo</strong></div>
               <div>4. Inserisci l'email destinatario:</div>
               <div class="flex items-center gap-2 mt-2">
-                <code class="mono text-xs bg-white/[0.06] border border-white/[0.10] rounded px-2.5 py-1.5 text-zinc-100 flex-1 min-w-0 truncate">pezz8io@proton.me</code>
-                <button data-copy-addr="pezz8io@proton.me" class="copy-addr-btn text-xs px-3 py-1.5 rounded font-semibold text-black transition hover:opacity-90 whitespace-nowrap shrink-0" style="background:#ff9900;">Copia</button>
+                <code class="mono text-xs bg-white/[0.06] border border-white/[0.10] rounded px-2.5 py-1.5 text-zinc-100 flex-1 min-w-0 truncate">itahub@proton.me</code>
+                <button data-copy-addr="itahub@proton.me" class="copy-addr-btn text-xs px-3 py-1.5 rounded font-semibold text-black transition hover:opacity-90 whitespace-nowrap shrink-0" style="background:#ff9900;">Copia</button>
               </div>
-              <div class="text-xs text-zinc-400 pt-1.5">Paghi con carta, PayPal, Apple/Google Pay o crypto — quello che preferisci. Il buono arriva via email diretto a Pezzottio.</div>
+              <div class="text-xs text-zinc-400 pt-1.5">Paghi con carta, PayPal, Apple/Google Pay o crypto — quello che preferisci. Il buono arriva via email diretto a ItaHub.</div>
             </div>
           </div>
           <div class="mt-4 pt-4 border-t border-white/[0.08]">
@@ -413,8 +435,11 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
         <span class="logo-pill">AnimeWorld</span>
         <span class="logo-pill">AnimeSaturn</span>
         <span class="logo-pill">AnimeUnity</span>
+        <span class="logo-pill">VidXgo</span>
         <span class="logo-pill">GuardaSerie</span>
         <span class="logo-pill">StreamingCommunity</span>
+        <span class="logo-pill">Altadefinizione</span>
+        <span class="logo-pill">GuardaHD</span>
         <span class="logo-pill">Torrentio</span>
         <span class="logo-pill">MediaFusion</span>
         <span class="logo-pill">Comet</span>
@@ -467,7 +492,7 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
         <div>
           <div class="text-base font-bold text-white mb-2">Stream HTTP italiani</div>
           <p class="text-sm text-zinc-400 leading-relaxed">
-            AnimeWorld, AnimeSaturn, GuardaSerie, StreamingCommunity.
+            AnimeWorld, AnimeSaturn, VidXgo, GuardaSerie, StreamingCommunity, Altadefinizione, GuardaHD.
             Riproduzione immediata, nessun debrid richiesto.
           </p>
         </div>
@@ -488,7 +513,7 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
         <div>
           <div class="text-base font-bold text-white mb-2">Pack stagione gestiti</div>
           <p class="text-sm text-zinc-400 leading-relaxed">
-            Apri S05E03 da un pack multi-stagione e Pezzottio seleziona
+            Apri S05E03 da un pack multi-stagione e ItaHub seleziona
             il <strong class="text-zinc-200">file giusto</strong> in Torbox/RealDebrid.
           </p>
         </div>
@@ -502,7 +527,7 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
         <div>
           <div class="text-base font-bold text-white mb-2">Privacy first</div>
           <p class="text-sm text-zinc-400 leading-relaxed">
-            Le tue API key vivono codificate nell'URL del manifest.
+            Le tue API key sono crittografate (AES-256-GCM) nell'URL.
             <strong class="text-zinc-200">Zero database, zero log</strong>, zero condivisione.
           </p>
         </div>
@@ -522,7 +547,7 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
           <div class="step-num mb-4">01</div>
           <div class="text-lg font-bold text-white mb-2">Incolla la key debrid</div>
           <p class="text-sm text-zinc-400 leading-relaxed">
-            Opzionale — Pezzottio funziona anche senza, restano gli stream HTTP
+            Opzionale — ItaHub funziona anche senza, restano gli stream HTTP
             italiani. Per il meglio servono Torbox o Real-Debrid (o entrambi in parallelo).
           </p>
         </div>
@@ -574,10 +599,10 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
         <span class="section-bar"></span>
         Configura il tuo link.
       </h2>
-      <p class="text-zinc-400 text-base sm:text-lg mb-8 md:mb-10 md:ml-[18px] text-center md:text-left">
-        Pezzottio funziona con <strong class="text-white">Torbox</strong> e <strong class="text-white">Real-Debrid</strong> —
-        uno, l'altro o entrambi in parallelo. Le tue key restano solo nel link, niente account, niente database.
-      </p>
+        <p class="text-zinc-400 text-base sm:text-lg mb-8 md:mb-10 md:ml-[18px] text-center md:text-left">
+          ItaHub funziona con <strong class="text-white">Torbox</strong> e <strong class="text-white">Real-Debrid</strong> —
+          uno, l'altro o entrambi in parallelo. Le tue key sono crittografate nel link, niente account, niente database.
+        </p>
 
       <!-- TB -->
       <div class="card card-tb p-4 sm:p-6 mb-3">
@@ -649,9 +674,9 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
         </div>
         <div class="space-y-2">
           <label class="flex items-start gap-3 p-3 rounded cursor-pointer hover:bg-white/[0.03] transition border border-transparent">
-            <input type="radio" name="style" value="pezzottio" class="mt-1 accent-red-600" ${st === 'pezzottio' ? 'checked' : ''} />
+            <input type="radio" name="style" value="itahub" class="mt-1 accent-red-600" ${st === 'itahub' ? 'checked' : ''} />
             <div class="flex-1">
-              <div class="text-sm text-white font-medium">Pezzottio (default)</div>
+              <div class="text-sm text-white font-medium">ItaHub (default)</div>
               <div class="text-xs text-zinc-400 mt-0.5">Layout pulito Netflix-style. Titolo, lingua, qualità su 2 righe.</div>
             </div>
           </label>
@@ -659,14 +684,14 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
             <input type="radio" name="style" value="torrentio" class="mt-1 accent-red-600" ${st === 'torrentio' ? 'checked' : ''} />
             <div class="flex-1">
               <div class="text-sm text-white font-medium">Torrentio</div>
-              <div class="text-xs text-zinc-400 mt-0.5">Stile classico: <code class="text-zinc-300">[TB⚡] Pezzottio 1080p</code> + filename, dimensione, seeders, lingue.</div>
+              <div class="text-xs text-zinc-400 mt-0.5">Stile classico: <code class="text-zinc-300">[TB⚡] ItaHub 1080p</code> + filename, dimensione, seeders, lingue.</div>
             </div>
           </label>
           <label class="flex items-start gap-3 p-3 rounded cursor-pointer hover:bg-white/[0.03] transition border border-transparent">
             <input type="radio" name="style" value="aios" class="mt-1 accent-red-600" ${st === 'aios' ? 'checked' : ''} />
             <div class="flex-1">
               <div class="text-sm text-white font-medium">AIOStreams compatibile</div>
-              <div class="text-xs text-zinc-400 mt-0.5">Formato standard parsabile da AIOStreams e altri meta-aggregator. Usalo solo se aggreghi Pezzottio dentro AIOStreams.</div>
+              <div class="text-xs text-zinc-400 mt-0.5">Formato standard parsabile da AIOStreams e altri meta-aggregator. Usalo solo se aggreghi ItaHub dentro AIOStreams.</div>
             </div>
           </label>
         </div>
@@ -700,7 +725,7 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
             <input type="radio" name="order" value="http" class="mt-1 accent-red-600" ${ord === 'http' ? 'checked' : ''} />
             <div class="flex-1">
               <div class="text-sm text-white font-medium">HTTP italiani sempre prima</div>
-              <div class="text-xs text-zinc-400 mt-0.5">AnimeWorld / GuardaSerie / StreamingCommunity all'inizio. Torbox e Real-Debrid sotto.</div>
+              <div class="text-xs text-zinc-400 mt-0.5">AnimeWorld / VidXgo / GuardaSerie / StreamingCommunity / Altadefinizione / GuardaHD all'inizio. Torbox e Real-Debrid sotto.</div>
             </div>
           </label>
         </div>
@@ -720,47 +745,68 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
             <input type="radio" name="filter" value="all" class="mt-1 accent-red-600" ${flt === 'all' ? 'checked' : ''} />
             <div class="flex-1">
               <div class="text-sm text-white font-medium">Tutto (default)</div>
-              <div class="text-xs text-zinc-400 mt-0.5">Torbox + Real-Debrid + magnet diretti + HTTP italiani da GuardaSerie e StreamingCommunity.</div>
+              <div class="text-xs text-zinc-400 mt-0.5">Torbox + Real-Debrid + magnet diretti + HTTP italiani da VidXgo, GuardaSerie, StreamingCommunity, Altadefinizione e GuardaHD.</div>
             </div>
           </label>
           <label class="flex items-start gap-3 p-3 rounded cursor-pointer hover:bg-white/[0.03] transition border border-transparent">
             <input type="radio" name="filter" value="torrent" class="mt-1 accent-red-600" ${flt === 'torrent' ? 'checked' : ''} />
             <div class="flex-1">
               <div class="text-sm text-white font-medium">Solo debrid / torrent</div>
-              <div class="text-xs text-zinc-400 mt-0.5">Solo Torbox / Real-Debrid (+ magnet diretti). Nasconde GuardaSerie e StreamingCommunity.</div>
+              <div class="text-xs text-zinc-400 mt-0.5">Solo Torbox / Real-Debrid (+ magnet diretti). Nasconde VidXgo, GuardaSerie, StreamingCommunity, Altadefinizione e GuardaHD.</div>
             </div>
           </label>
           <label class="flex items-start gap-3 p-3 rounded cursor-pointer hover:bg-white/[0.03] transition border border-transparent">
             <input type="radio" name="filter" value="http" class="mt-1 accent-red-600" ${flt === 'http' ? 'checked' : ''} />
             <div class="flex-1">
               <div class="text-sm text-white font-medium">Solo HTTP italiani</div>
-              <div class="text-xs text-zinc-400 mt-0.5">Solo GuardaSerie + StreamingCommunity. Nasconde Torbox, Real-Debrid e magnet.</div>
+              <div class="text-xs text-zinc-400 mt-0.5">Solo VidXgo + GuardaSerie + StreamingCommunity + Altadefinizione + GuardaHD. Nasconde Torbox, Real-Debrid e magnet.</div>
             </div>
           </label>
         </div>
       </div>
 
-      <!-- Filtra risultati ANIME -->
+      <!-- Stream HTTP ANIME (AW/AS/AU) -->
       <div class="card p-4 sm:p-5 mb-3">
         <div class="flex items-center gap-3 mb-3">
           <div class="text-base">🎌</div>
           <div>
-            <div class="font-semibold text-zinc-100 text-sm">Filtra risultati anime</div>
-            <div class="text-xs text-zinc-500">Catalogo Pezzottio Anime + stream HTTP AW/AS/AU</div>
+            <div class="font-semibold text-zinc-100 text-sm">Stream HTTP Anime</div>
+            <div class="text-xs text-zinc-500">Provider AW/AS/AU</div>
           </div>
         </div>
         <label class="flex items-start gap-3 p-3 rounded cursor-pointer hover:bg-white/[0.03] transition border border-transparent">
-          <input id="anime-toggle" type="checkbox" class="mt-1 accent-red-600 w-4 h-4" ${animeOn ? 'checked' : ''} />
+          <input id="anime-toggle" type="checkbox" class="mt-1 accent-red-600 w-4 h-4" ${httpAnimeOn ? 'checked' : ''} />
           <div class="flex-1">
-            <div class="text-sm text-white font-medium">Abilita risultati anime</div>
+            <div class="text-sm text-white font-medium">Abilita stream HTTP anime</div>
             <div class="text-xs text-zinc-400 mt-0.5 leading-relaxed">
-              Aggiunge i cataloghi Pezzottio Anime alla home di Stremio e abilita gli stream HTTP da
-              AnimeWorld, AnimeSaturn e AnimeUnity quando apri un anime dal nostro catalogo.
+              Mostra gli stream HTTP da AnimeWorld, AnimeSaturn e AnimeUnity quando apri
+              un anime. I torrent (Nyaa, ecc.) rimangono sempre attivi.
+            </div>
+          </div>
+        </label>
+      </div>
+
+      <!-- Catalogo ANIME (home Stremio) -->
+      <div class="card p-4 sm:p-5 mb-3">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="text-base">📺</div>
+          <div>
+            <div class="font-semibold text-zinc-100 text-sm">Catalogo Anime Home</div>
+            <div class="text-xs text-zinc-500">Sezione ItaHub Anime su Stremio</div>
+          </div>
+        </div>
+        <label class="flex items-start gap-3 p-3 rounded cursor-pointer hover:bg-white/[0.03] transition border border-transparent">
+          <input id="anime-catalog-toggle" type="checkbox" class="mt-1 accent-red-600 w-4 h-4" ${catAnimeOn ? 'checked' : ''} />
+          <div class="flex-1">
+            <div class="text-sm text-white font-medium">Mostra catalogo anime nella home</div>
+            <div class="text-xs text-zinc-400 mt-0.5 leading-relaxed">
+              Aggiunge i cataloghi ItaHub Anime (Kitsu-powered) alla home di Stremio.
+              Disabilita questa opzione se preferisci usare un altro catalogo anime.
             </div>
           </div>
         </label>
         <div class="mt-3 p-3 rounded bg-amber-500/10 border border-amber-500/30">
-          <div class="text-xs text-amber-200 font-semibold mb-1">⚠️ OBBLIGATORIO se attivi l'anime</div>
+          <div class="text-xs text-amber-200 font-semibold mb-1">⚠️ Se usi il catalogo anime</div>
           <div class="text-xs text-amber-100/80 leading-relaxed">
             Disabilita o disinstalla qualsiasi altro catalog anime (Anime Catalogs, Kitsu Anime, Anime
             Kitsu, AIOCatalogs con sezioni anime). Usano id e numerazioni episodi diversi: causa stream
@@ -787,56 +833,12 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
           <input id="prefetch-toggle" type="checkbox" class="mt-1 accent-red-600 w-4 h-4" ${pf ? 'checked' : ''} />
           <div class="flex-1">
             <div class="text-sm text-white font-medium">🚀 Binge mode (auto-prefetch prossimo episodio)</div>
-            <div class="text-xs text-zinc-400 mt-0.5">Quando guardi una serie, l'addon aggiunge AUTOMATICAMENTE il prossimo episodio a Torbox in background. Quando finisci e clicchi il prossimo, parte istantaneo. Solo per serie, richiede chiave Torbox.</div>
+            <div class="text-xs text-zinc-400 mt-0.5">Quando guardi una serie, l'addon pre-risolve AUTOMATICAMENTE il prossimo episodio in background. Se usi Torbox, viene aggiunto al tuo account per partire istantaneo. Con stream HTTP (SC/GS/ADN/GH), le cache dei provider vengono scaldate per ridurre l'attesa. Solo per serie.</div>
           </div>
         </label>
       </div>
 
-      <!-- PROFILI MULTIPLI -->
-      <details class="card p-4 sm:p-5 mb-6" style="border-left: 3px solid #38bdf8;">
-        <summary class="cursor-pointer flex items-center gap-3 select-none list-none">
-          <div class="text-base">👨‍👩‍👧</div>
-          <div class="flex-1">
-            <div class="font-semibold text-zinc-100 text-sm">Profili multipli <span class="ml-1 text-[10px] uppercase tracking-wider text-sky-400 font-bold">novità</span></div>
-            <div class="text-xs text-zinc-500 mt-0.5">Genera più link in un colpo solo (es. uno per ogni membro della famiglia). Ogni link va installato in un profilo Stremio diverso.</div>
-          </div>
-          <svg class="chevron w-4 h-4 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-        </summary>
 
-        <div class="mt-5 pt-5 border-t border-white/[0.06] space-y-4">
-          <!-- Modalità chiavi -->
-          <div>
-            <div class="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-2">Modalità chiavi (Torbox + Real-Debrid)</div>
-            <div class="space-y-2">
-              <label class="flex items-start gap-2.5 p-2.5 rounded cursor-pointer hover:bg-white/[0.03] transition">
-                <input type="radio" name="key-mode" value="shared" class="mt-0.5 accent-red-600" checked />
-                <div class="text-xs">
-                  <div class="text-zinc-200 font-medium">Stesse chiavi per tutti i profili</div>
-                  <div class="text-zinc-500 mt-0.5">Tutti i profili usano le chiavi Torbox e Real-Debrid inserite sopra.</div>
-                </div>
-              </label>
-              <label class="flex items-start gap-2.5 p-2.5 rounded cursor-pointer hover:bg-white/[0.03] transition">
-                <input type="radio" name="key-mode" value="per-profile" class="mt-0.5 accent-red-600" />
-                <div class="text-xs">
-                  <div class="text-zinc-200 font-medium">Chiavi diverse per ogni profilo</div>
-                  <div class="text-zinc-500 mt-0.5">Ogni profilo ha le sue chiavi Torbox e/o Real-Debrid indipendenti (utile per famiglie con account separati). Se lasci vuoto un campo, viene usata la chiave globale sopra come fallback.</div>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          <!-- Lista profili -->
-          <div>
-            <div class="flex items-center justify-between mb-2">
-              <div class="text-xs uppercase tracking-wider text-zinc-500 font-semibold">Profili</div>
-              <button id="add-profile" type="button" class="text-xs text-sky-400 hover:text-sky-300 transition font-semibold">+ Aggiungi profilo</button>
-            </div>
-            <div id="profiles-list" class="space-y-3">
-              <!-- I profili sono iniettati via JS -->
-            </div>
-          </div>
-        </div>
-      </details>
 
       <button id="generate-btn" class="btn-primary w-full py-3.5 rounded text-base uppercase">
         ▶ Genera link
@@ -855,9 +857,6 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
       <p class="text-sm text-zinc-400 mb-5" id="install-card-subtitle">
         Univoco e legato alle tue chiavi. Non condividerlo.
       </p>
-
-      <!-- Lista profili multipli (visibile solo in modalità multi-profilo) -->
-      <div id="profiles-result" class="hidden space-y-3 mb-6"></div>
 
       <!-- Step 1: Catalogo extra (consigliato, da installare PRIMA) -->
       <div class="mb-2 flex items-center gap-2">
@@ -879,15 +878,15 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
         Netflix, Prime Video, Disney+, HBO Max, Apple TV+, Crunchyroll. Gratis.
       </div>
 
-      <!-- Step 2: Pezzottio (DOPO il catalogo) -->
+      <!-- Step 2: ItaHub (DOPO il catalogo) -->
       <div class="mb-2 flex items-center gap-2">
         <span class="flex items-center justify-center w-5 h-5 rounded-full bg-red-500/20 border border-red-500/40 text-[10px] font-bold text-red-300">2</span>
-        <span class="text-xs text-zinc-300"><strong class="text-white">Poi</strong> installa Pezzottio</span>
+        <span class="text-xs text-zinc-300"><strong class="text-white">Poi</strong> installa ItaHub</span>
       </div>
       <a id="install-stremio" href="#" class="btn-stremio block text-center w-full px-5 py-3.5 rounded uppercase mb-2">
         <span class="inline-flex items-center gap-2 justify-center">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-          Installa Pezzottio
+          Installa ItaHub
         </span>
       </a>
       <button id="copy-url" class="btn-ghost w-full px-5 py-2.5 rounded text-sm mb-6">
@@ -934,7 +933,7 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
           </li>
           <li class="flex gap-3">
             <span class="shrink-0 w-5 h-5 rounded-md bg-white/5 border border-white/10 flex items-center justify-center text-[10px] font-semibold text-zinc-400">4</span>
-            <span>Install sulla card Pezzottio</span>
+            <span>Install sulla card ItaHub</span>
           </li>
         </ol>
       </details>
@@ -951,7 +950,7 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
         <details class="faq-item">
           <summary>È davvero gratis?<span class="faq-icon text-2xl">+</span></summary>
           <div class="faq-body">
-            Sì. Pezzottio è open-source e gratuito al 100%. Torbox e Real-Debrid sono provider debrid commerciali (pochi euro al mese), entrambi supportati — puoi configurarli da soli o in parallelo. Senza nessun debrid funzionano comunque gli stream HTTP italiani (AnimeWorld, AnimeSaturn, AnimeUnity, GuardaSerie, StreamingCommunity).
+            Sì. ItaHub è open-source e gratuito al 100%. Torbox e Real-Debrid sono provider debrid commerciali (pochi euro al mese), entrambi supportati — puoi configurarli da soli o in parallelo. Senza nessun debrid funzionano comunque gli stream HTTP italiani (AnimeWorld, AnimeSaturn, AnimeUnity, VidXgo, GuardaSerie, StreamingCommunity, Altadefinizione, GuardaHD).
           </div>
         </details>
         <details class="faq-item">
@@ -963,19 +962,19 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
         <details class="faq-item">
           <summary>Il mio token Torbox è al sicuro?<span class="faq-icon text-2xl">+</span></summary>
           <div class="faq-body">
-            Sì. La chiave è codificata (base64) <strong>nell'URL stesso del manifest</strong>, mai salvata sul server. Nessun database, nessun log persistente. Ogni utente ha il suo link univoco con la sua chiave.
+            Sì. La chiave è crittografata (AES-256-GCM) <strong>nell'URL del manifest</strong> con una chiave server-side. Nessun database, nessun log persistente. Ogni utente ha il suo link univoco con la sua chiave, illeggibile da terzi.
           </div>
         </details>
         <details class="faq-item">
           <summary>Funziona con Crunchyroll / cataloghi anime?<span class="faq-icon text-2xl">+</span></summary>
           <div class="faq-body">
-            Sì. Pezzottio supporta ogni formato id Stremio: IMDb, Kitsu, MAL, AniList, AniDB, TMDB, TVDB. Il mapping cross-database è automatico, quindi qualunque catalogo tu abbia installato (Crunchyroll, AnimeUnity, Cinemeta...) Pezzottio capisce e cerca.
+            Sì. ItaHub supporta ogni formato id Stremio: IMDb, Kitsu, MAL, AniList, AniDB, TMDB, TVDB. Il mapping cross-database è automatico, quindi qualunque catalogo tu abbia installato (Crunchyroll, AnimeUnity, Cinemeta...) ItaHub capisce e cerca.
           </div>
         </details>
         <details class="faq-item">
           <summary>Perché lo streaming HTTP non si blocca al 5° minuto?<span class="faq-icon text-2xl">+</span></summary>
           <div class="faq-body">
-            Perché Pezzottio ha un <strong>proxy HLS interno</strong>. Quando i token dei CDN scadono (succede ogni ~5 minuti) noi li rigeneriamo server-side e riscriviamo le playlist al volo. Stremio non se ne accorge nemmeno.
+            Perché ItaHub ha un <strong>proxy HLS interno</strong>. Quando i token dei CDN scadono (succede ogni ~5 minuti) noi li rigeneriamo server-side e riscriviamo le playlist al volo. Stremio non se ne accorge nemmeno.
           </div>
         </details>
         <details class="faq-item">
@@ -987,7 +986,7 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
         <details class="faq-item">
           <summary>E se apro S05E03 ma trovo solo un pack di 5 stagioni?<span class="faq-icon text-2xl">+</span></summary>
           <div class="faq-body">
-            Pezzottio rileva il file giusto dentro l'archivio e lo passa a Torbox/RealDebrid con file_id corretto. <strong>Niente più "ho aperto S05E03 ma parte S01E01"</strong>.
+            ItaHub rileva il file giusto dentro l'archivio e lo passa a Torbox/RealDebrid con file_id corretto. <strong>Niente più "ho aperto S05E03 ma parte S01E01"</strong>.
           </div>
         </details>
         <details class="faq-item">
@@ -999,7 +998,7 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
         <details class="faq-item">
           <summary>Devo ospitare qualcosa (MediaFlowProxy, Docker, VPS)?<span class="faq-icon text-2xl">+</span></summary>
           <div class="faq-body">
-            <strong>No.</strong> Tutti gli altri addon italiani ti fanno ospitare un proxy (MediaFlowProxy) su un tuo server esterno: VPS pagato a parte, Raspberry sempre acceso, Docker su NAS. Pezzottio ce l'ha già dentro al suo server pubblico. Tu apri il link, copi in Stremio, fine.
+            <strong>No.</strong> Tutti gli altri addon italiani ti fanno ospitare un proxy (MediaFlowProxy) su un tuo server esterno: VPS pagato a parte, Raspberry sempre acceso, Docker su NAS. ItaHub ce l'ha già dentro al suo server pubblico. Tu apri il link, copi in Stremio, fine.
           </div>
         </details>
         <details class="faq-item">
@@ -1029,7 +1028,7 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
     <footer class="py-10 mt-10 border-t border-white/[0.06]">
       <div class="flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-zinc-500">
         <div class="flex items-center gap-4">
-          <img src="/pezzottio-logo.png" alt="PEZZOTTIO" class="h-5 select-none opacity-70" draggable="false" />
+          <img src="/itahub-logo.png" alt="ITAHUB" class="h-5 select-none opacity-70" draggable="false" />
           <span class="mono">${escape(hostOnly)}</span>
         </div>
         <div class="flex items-center gap-5 flex-wrap justify-center">
@@ -1042,7 +1041,7 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
             💎 Torbox
           </a>
           <span class="text-zinc-700">·</span>
-          <a href="https://github.com/ceres777/pezzottio" target="_blank" rel="noopener" class="hover:text-white transition flex items-center gap-1.5">
+          <a href="https://github.com/manuel09/pezz" target="_blank" rel="noopener" class="hover:text-white transition flex items-center gap-1.5">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.57.1.78-.25.78-.55v-2.13c-3.2.7-3.87-1.36-3.87-1.36-.52-1.34-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.4-5.25 5.69.41.36.78 1.07.78 2.15v3.19c0 .31.21.66.79.55C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5z"/></svg>
             GitHub
           </a>
@@ -1063,6 +1062,8 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
     const BASE = ${JSON.stringify(base)};
     const HOST = ${JSON.stringify(hostOnly)};
     let currentInstallUrl = null;
+
+    function esc(s) { return String(s||'').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
 
     function animateCount(el, target) {
       const dur = 900; const t0 = performance.now();
@@ -1235,77 +1236,17 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
       if ($('#rd-key').value) testLive('rd');
     }
 
-    function base64UrlEncode(obj) {
-      const json = JSON.stringify(obj);
-      const b64 = btoa(unescape(encodeURIComponent(json)));
-      return b64.replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
+    async function apiEncode(payload) {
+      const r = await fetch('/api/encode', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) throw new Error('encode error');
+      const d = await r.json();
+      return d.encoded;
     }
 
-    // === PROFILI MULTIPLI ===
-    // Ogni profilo ha solo un nome (e opzionalmente una chiave TB se in modalità
-    // 'chiave diversa per profilo'). Le impostazioni sono quelle globali della
-    // pagina (filter/style/order/fullIta/prefetch) e valgono per tutti i profili.
-    let profiles = []; // { name, tb, rd }
 
-    function renderProfiles() {
-      const wrap = $('#profiles-list');
-      if (!wrap) return;
-      const perProfileKey = (document.querySelector('input[name="key-mode"]:checked') || {}).value === 'per-profile';
-      wrap.innerHTML = '';
-      if (!profiles.length) {
-        wrap.innerHTML = '<p class="text-xs text-zinc-500 italic">Nessun profilo. Click "+ Aggiungi profilo" per crearne uno.</p>';
-        return;
-      }
-      profiles.forEach((p, i) => {
-        const row = document.createElement('div');
-        row.className = 'bg-white/[0.03] border border-white/[0.06] rounded p-3 space-y-2';
-        const keyInputs = perProfileKey
-          ? '<input type="password" data-profile-tb="' + i + '" value="' + (p.tb || '').replace(/"/g, '&quot;') + '"' +
-              ' class="input mono w-full rounded px-2.5 py-1.5 text-xs"' +
-              ' placeholder="Chiave Torbox (opzionale)" />' +
-            '<input type="password" data-profile-rd="' + i + '" value="' + (p.rd || '').replace(/"/g, '&quot;') + '"' +
-              ' class="input mono w-full rounded px-2.5 py-1.5 text-xs"' +
-              ' placeholder="Chiave Real-Debrid (opzionale)" />' +
-            '<div class="text-[10px] text-zinc-500">Inserisci almeno una delle due. Vuoto = usa le chiavi globali sopra.</div>'
-          : '';
-        row.innerHTML =
-          '<div class="flex items-center gap-2">' +
-            '<input type="text" data-profile-name="' + i + '" value="' + (p.name || '').replace(/"/g, '&quot;') + '"' +
-              ' class="input flex-1 rounded px-2.5 py-1.5 text-xs" placeholder="Nome profilo (es. Famiglia)" />' +
-            '<button type="button" data-profile-remove="' + i + '" class="text-zinc-500 hover:text-red-400 px-2 text-lg" title="Rimuovi">×</button>' +
-          '</div>' +
-          keyInputs;
-        wrap.appendChild(row);
-      });
-      // Hook events
-      wrap.querySelectorAll('[data-profile-name]').forEach((el) => {
-        el.addEventListener('input', (e) => { profiles[+e.target.dataset.profileName].name = e.target.value; });
-      });
-      wrap.querySelectorAll('[data-profile-tb]').forEach((el) => {
-        el.addEventListener('input', (e) => { profiles[+e.target.dataset.profileTb].tb = e.target.value.trim(); });
-      });
-      wrap.querySelectorAll('[data-profile-rd]').forEach((el) => {
-        el.addEventListener('input', (e) => { profiles[+e.target.dataset.profileRd].rd = e.target.value.trim(); });
-      });
-      wrap.querySelectorAll('[data-profile-remove]').forEach((el) => {
-        el.addEventListener('click', (e) => {
-          profiles.splice(+e.target.dataset.profileRemove, 1);
-          renderProfiles();
-        });
-      });
-    }
-
-    if ($('#add-profile')) {
-      $('#add-profile').addEventListener('click', () => {
-        if (profiles.length >= 5) { showStatus('Massimo 5 profili.', 'err'); return; }
-        profiles.push({ name: 'Profilo ' + (profiles.length + 1), tb: '', rd: '' });
-        renderProfiles();
-      });
-      document.querySelectorAll('input[name="key-mode"]').forEach((el) => {
-        el.addEventListener('change', renderProfiles);
-      });
-      renderProfiles();
-    }
 
     $('#generate-btn').addEventListener('click', async () => {
       const btn = $('#generate-btn');
@@ -1313,7 +1254,6 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
       const rd = ($('#rd-key') && $('#rd-key').value.trim()) || '';
       const order = (document.querySelector('input[name="order"]:checked') || {}).value || 'smart';
 
-      // Senza chiave → genera comunque link "solo HTTP"
       let payload = {};
       let validTb = '';
       let validRd = '';
@@ -1338,126 +1278,55 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
         if (validTb) payload.tb = validTb;
         if (validRd) payload.rd = validRd;
       }
-      // Includo order solo se diverso dal default per tenere il link più corto
       if (order && order !== 'smart') payload.order = order;
-      // Includo style solo se diverso dal default
-      const styleSel = (document.querySelector('input[name="style"]:checked') || {}).value || 'pezzottio';
-      if (styleSel !== 'pezzottio') payload.style = styleSel;
-      // Filter: includo solo se diverso dal default 'all'
+      const styleSel = (document.querySelector('input[name="style"]:checked') || {}).value || 'itahub';
+      if (styleSel !== 'itahub') payload.style = styleSel;
       const filterSel = (document.querySelector('input[name="filter"]:checked') || {}).value || 'all';
       if (filterSel !== 'all') payload.filter = filterSel;
-      // Includo fullIta solo se attivato
       if ($('#full-ita-toggle') && $('#full-ita-toggle').checked) payload.fullIta = true;
-      // Prefetch opt-in
       if ($('#prefetch-toggle') && $('#prefetch-toggle').checked) payload.prefetch = true;
-      // Anime (default ON): salvo nel link solo se l'utente l'ha disattivato.
-      // httpAnime=false → niente catalogo Pezzottio Anime + niente stream AW/AS/AU.
-      if ($('#anime-toggle') && !$('#anime-toggle').checked) payload.httpAnime = false;
+      if ($('#anime-toggle')) payload.httpAnime = $('#anime-toggle').checked;
+      if ($('#anime-catalog-toggle')) payload.animeCatalog = $('#anime-catalog-toggle').checked;
 
-      // === MODALITÀ PROFILI MULTIPLI ===
-      if (profiles.length > 0) {
-        const keyMode = (document.querySelector('input[name="key-mode"]:checked') || {}).value || 'shared';
-        // Valida chiavi per-profilo: ogni profilo deve avere almeno UNA chiave
-        // (TB o RD, locale o globale via fallback).
-        if (keyMode === 'per-profile') {
-          const missing = profiles
-            .filter((p) => !p.tb && !p.rd && !validTb && !validRd)
-            .map((p) => p.name)
-            .join(', ');
-          if (missing) {
-            showStatus('Inserisci almeno una chiave (Torbox o Real-Debrid) per: ' + missing, 'err');
-            btn.textContent = 'Genera link'; btn.disabled = false;
-            return;
-          }
-        }
-        // Le impostazioni globali della pagina valgono per TUTTI i profili.
-        // Le chiavi TB/RD: per-profile usa quella inserita nel profilo (con
-        // fallback alla globale se vuota); shared usa solo le globali.
-        const baseSettings = { ...payload };
-        delete baseSettings.tb;
-        delete baseSettings.rd;
-        const results = profiles.map((p) => {
-          const tbKey = keyMode === 'shared' ? validTb : (p.tb || validTb);
-          const rdKey = keyMode === 'shared' ? validRd : (p.rd || validRd);
-          const pPayload = { ...baseSettings };
-          if (tbKey) pPayload.tb = tbKey;
-          if (rdKey) pPayload.rd = rdKey;
-          const enc = base64UrlEncode(pPayload);
-          return {
-            name: p.name || 'Profilo',
-            installUrl: BASE + '/' + (enc || 'e30') + '/manifest.json',
-            stremioUrl: 'stremio://' + HOST + '/' + (enc || 'e30') + '/manifest.json',
-          };
-        });
-        // Render N install cards
-        $('#install-card-title').textContent = 'Link generati (' + results.length + ' profili)';
-        $('#install-card-subtitle').textContent = 'Installa ognuno in un profilo Stremio diverso.';
-        $('#profiles-result').classList.remove('hidden');
-        $('#profiles-result').innerHTML = results.map(function(r, i) {
-          return '<div class="bg-white/[0.03] border border-white/[0.06] rounded-lg p-4">' +
-            '<div class="flex items-center justify-between mb-3">' +
-              '<div class="text-sm font-semibold text-white">' + String(r.name).replace(/</g,'&lt;') + '</div>' +
-              '<span class="text-[10px] uppercase tracking-wider text-zinc-500">Profilo ' + (i + 1) + '</span>' +
-            '</div>' +
-            '<a href="' + r.stremioUrl + '" class="btn-stremio block text-center w-full px-4 py-2.5 rounded uppercase text-sm mb-2">' +
-              '▶ Installa in Stremio' +
-            '</a>' +
-            '<div class="mono text-[10px] text-zinc-500 bg-black/40 rounded px-2 py-1.5 border border-white/[0.06] break-all">' + r.installUrl + '</div>' +
-          '</div>';
-        }).join('');
-        // Nascondo elementi single-link
-        $('#install-stremio').style.display = 'none';
-        $('#copy-url').style.display = 'none';
-        const qrParent = $('#qr-code')?.closest('.grid'); if (qrParent) qrParent.style.display = 'none';
-        const urlEl = $('#install-url'); if (urlEl) urlEl.style.display = 'none';
+      try {
+        const encoded = await apiEncode(payload);
+        const installUrl = BASE + '/' + encoded + '/manifest.json';
+        const stremioUrl = 'stremio://' + HOST + '/' + encoded + '/manifest.json';
+        currentInstallUrl = installUrl;
 
+        $('#install-card-title').textContent = 'Link generato';
+        $('#install-card-subtitle').textContent = 'Univoco e legato alle tue chiavi. Non condividerlo.';
+        $('#install-stremio').style.display = '';
+        $('#copy-url').style.display = '';
+        const qrParent = $('#qr-code')?.closest('.grid'); if (qrParent) qrParent.style.display = '';
+        const urlEl = $('#install-url'); if (urlEl) urlEl.style.display = '';
+
+        $('#install-url').textContent = installUrl;
+        $('#install-stremio').href = stremioUrl;
         $('#install-card').classList.remove('hidden');
+
+        const qrEl = $('#qr-code'); qrEl.innerHTML = '';
+        new QRCode(qrEl, {
+          text: installUrl, width: 160, height: 160,
+          colorDark: '#08080c', colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.M,
+        });
+
+        if (location.protocol === 'https:' && installUrl.startsWith('http://')) {
+          $('#mixed-warning').classList.remove('hidden');
+        }
+
         $('#install-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
-        showStatus(results.length + ' link pronti.', 'ok');
+        showStatus('Link pronto.', 'ok');
         btn.textContent = 'Rigenera link';
         btn.disabled = false;
-        const colors = ['#38bdf8', '#c084fc', '#a78bfa'];
-        confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors, ticks: 200, scalar: 0.8 });
-        return;
+
+        const colors = ['#c084fc', '#a78bfa', '#f0abfc'];
+        confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 }, colors, ticks: 200, scalar: 0.8 });
+      } catch (e) {
+        showStatus('Errore: ' + e.message, 'err');
+        btn.textContent = 'Genera link'; btn.disabled = false;
       }
-
-      // === MODALITÀ SINGOLA (default storico) ===
-      const encoded = base64UrlEncode(payload);
-      const installUrl = BASE + '/' + (encoded || 'e30') + '/manifest.json';
-      const stremioUrl = 'stremio://' + HOST + '/' + (encoded || 'e30') + '/manifest.json';
-      currentInstallUrl = installUrl;
-
-      $('#install-card-title').textContent = 'Link generato';
-      $('#install-card-subtitle').textContent = 'Univoco e legato alle tue chiavi. Non condividerlo.';
-      $('#profiles-result').classList.add('hidden');
-      $('#install-stremio').style.display = '';
-      $('#copy-url').style.display = '';
-      const qrParent = $('#qr-code')?.closest('.grid'); if (qrParent) qrParent.style.display = '';
-      const urlEl = $('#install-url'); if (urlEl) urlEl.style.display = '';
-
-      $('#install-url').textContent = installUrl;
-      $('#install-stremio').href = stremioUrl;
-      $('#install-card').classList.remove('hidden');
-
-      const qrEl = $('#qr-code'); qrEl.innerHTML = '';
-      new QRCode(qrEl, {
-        text: installUrl, width: 160, height: 160,
-        colorDark: '#08080c', colorLight: '#ffffff',
-        correctLevel: QRCode.CorrectLevel.M,
-      });
-
-      if (location.protocol === 'https:' && installUrl.startsWith('http://')) {
-        $('#mixed-warning').classList.remove('hidden');
-      }
-
-      $('#install-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
-      showStatus('Link pronto.', 'ok');
-      btn.textContent = 'Rigenera link';
-      btn.disabled = false;
-
-      // Confetti sobri
-      const colors = ['#c084fc', '#a78bfa', '#f0abfc'];
-      confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 }, colors, ticks: 200, scalar: 0.8 });
     });
 
     $('#copy-url').addEventListener('click', async () => {
@@ -1471,14 +1340,14 @@ function render({ base, rd, tb, order, aios, style, onlyTorrent, filter, fullIta
 
     // Catalog extra: bottone separato, URL fisso al nostro proxy /extra/.
     // L'utente clicca PRIMA "Installa Catalogo" (Stremio aggiunge il catalog),
-    // POI clicca "Installa Pezzottio". L'ordine di install determina l'ordine
+    // POI clicca "Installa ItaHub". L'ordine di install determina l'ordine
     // dei catalog in home Stremio (primo installato = primo in lista).
     const EXTRA_CATALOG_URL = 'stremio://' + HOST + '/extra/manifest.json';
     // URL HTTPS per copia manuale (mirror del stremio:// che usa lo schema custom)
     const EXTRA_CATALOG_HTTPS = BASE + '/extra/manifest.json';
     const installCatBtn = $('#install-catalog');
     if (installCatBtn) installCatBtn.href = EXTRA_CATALOG_URL;
-    // Copy link manuale catalogo (stesso pattern di #copy-url per Pezzottio)
+    // Copy link manuale catalogo (stesso pattern di #copy-url per ItaHub)
     const copyCatBtn = $('#copy-catalog-url');
     if (copyCatBtn) {
       copyCatBtn.addEventListener('click', async () => {

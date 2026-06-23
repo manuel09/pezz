@@ -17,7 +17,7 @@ const { getConfig } = require('../config');
 
 // === INIEZIONE CHIAVE RD NEGLI AGGREGATOR ===
 // Gli aggregator esterni sanno fare il check cached-on-RD se gli passi la
-// chiave. Lo facciamo dinamicamente per /stream così Pezzottio non deve più
+// chiave. Lo facciamo dinamicamente per /stream così ItaHub non deve più
 // chiamare RD /torrents/instantAvailability (deprecato 403).
 // Pattern noti:
 //   - Torrentio: appende '|realdebrid=KEY' al path config
@@ -168,7 +168,7 @@ const EXTERNAL_ADDONS = [
   {
     key: 'mediafusion',
     label: 'MediaFusion',
-    baseUrl: process.env.MEDIAFUSION_URL || 'https://mediafusionfortheweebs.midnightignite.me/D--MuTCQ99t0sh23nd3nx2xZCCqMkr4MPwy5I9suo3Ej2tUYTqimnxZBJ34hbNRwoL5AIvPt4N8KPnl50LWHT5YLDcrwnX_dhOq3vHO0aCNKBlnXeki7olZAUDoHepPCTDFLFtZVcZcohYRa83aT2Vbig3W5Qz3qErPqw2Zdb676ioZa452Mb35T0IX-ftQcNF0oGJerUTZhfvv9w4wrEIiW8wx0jdSxAfcrnM6yKFEcYMP-3dRWYAL2wy13Gcvwr2j4ax2z6TQ35xlcW9WWsKjA',
+    baseUrl: process.env.MEDIAFUSION_URL || 'https://mediafusionfortheweebs.midnightignite.me/D-_BrfZW1ywroXXB8w0XfKlL48ue1hrKkbVNvz23IVUe5v9VcX-YslbtIWohH1tPVhAqiOnL9LWCbNWJ_zRYaDE_78AGKSdD_FkoU1CtkLL9g7NNTMnmY27Y6naOrqw8T5j5noB0hzzVnI8yDo67upztKn8BJYKgf7TletfTxz9cJDqJi6bBXa_dgjXn3h_3U-7maNixhYuMBpFphISKHccU5Wevh_Hs1U9XQeu8YH5XzAxoFVsSxCCFttDOHTNSDHpTeAMAS_1LDlMZX4N7QhyHK9GWCEGb_P0bC_WwZUr64-uvAOWtmxGVApx9BEsp89P5EElRzn6BhVO7Vt78LdlDpIxSVjgIP68i7XygfJ8hqR-h_q5r7IxrsYE3r5ZQXj1ZENUzQWBqxXRW_aIwFGHQTsRqjYP1KKBDB94vwtKGL7iiBep98MTtZy7KEf4nbaP5gd0I2Y_dFMzkLzN7cyzj5HqO_aq9WMeiN6jKlm2-UN2Y5BtpxUD9l5-ZZ-qhmriwHutWuMdswnKdzIXJ844CklYkVRD5Z9L_ll6NgjL8mYgA02ViMEOQ2SI3IFDWqTkL8AucvG-D7EyV4xwRnJ5ttPg9rD9AZAKuhNhAxnzr--6fgAvA3x3P6P6Yax9U6j7WfucjdTxmKbVxt8Bnko0ZQiYA8P4fprNnh3_oNXw7_fwYe6XIJx5J3XMD4FWriDHQ_X0wRYUT629JNRNEx9aQdT7vYBI7HxmjyIQ_wAy189r43TmjgEVjh4WIBqy_E-DXIOLIej4hzqaNs5zVFykUHVaCW3jS0mPqYqkUHAvVhy4D5Adrpaj2NzW21hRgpi_ISQStweqSdK71GKysMpUiX4Loi6OGK8UaDEtP8niwIWq7f0AEynlWvdEOv-Kyqy6NZpJIlWZL49TDrP5D7vhp8FR_235-ZJ7jJp4cwG_xHs43f6nMT6Vo2r7Zzvew8qpYGTT_WE2UCZ_IUbxXpwRQ9w5PYt3ddFL_Qgg5vc7Aht3-6ng56dStSeZlDeNIN2wv2YSjnvpwEO3NzHI7BX5g',
     timeout: 3000,
     assumeItalian: true,
     enabled: true,
@@ -176,7 +176,7 @@ const EXTERNAL_ADDONS = [
   {
     key: 'comet',
     label: 'Comet',
-    baseUrl: process.env.COMET_URL || 'https://comet.feels.legal/eyJtYXhSZXN1bHRzUGVyUmVzb2x1dGlvbiI6MCwibWF4U2l6ZSI6MCwiY2FjaGVkT25seSI6ZmFsc2UsInNvcnRDYWNoZWRVbmNhY2hlZFRvZ2V0aGVyIjpmYWxzZSwicmVtb3ZlVHJhc2giOnRydWUsInJlc3VsdEZvcm1hdCI6WyJhbGwiXSwiZGVicmlkU2VydmljZXMiOltdLCJlbmFibGVUb3JyZW50Ijp0cnVlLCJkZWR1cGxpY2F0ZVN0cmVhbXMiOmZhbHNlLCJzY3JhcGVEZWJyaWRBY2NvdW50VG9ycmVudHMiOmZhbHNlLCJkZWJyaWRTdHJlYW1Qcm94eVBhc3N3b3JkIjoiIiwibGFuZ3VhZ2VzIjp7InJlcXVpcmVkIjpbIml0Il0sImFsbG93ZWQiOlsibXVsdGkiLCJpdCJdLCJleGNsdWRlIjpbImVuIiwiamEiLCJ6aCIsInJ1IiwiYXIiLCJwdCIsImVzIiwiZnIiLCJkZSIsImtvIiwiaGkiLCJibiIsInBhIiwibXIiLCJndSIsInRhIiwidGUiLCJrbiIsIm1sIiwidGgiLCJ2aSIsImlkIiwidHIiLCJoZSIsImZhIiwidWsiLCJlbCIsImx0IiwibHYiLCJldCIsInBsIiwiY3MiLCJzayIsImh1Iiwicm8iLCJiZyIsInNyIiwiaHIiLCJzbCIsIm5sIiwiZGEiLCJmaSIsInN2Iiwibm8iLCJtcyIsImxhIl0sInByZWZlcnJlZCI6WyJpdCJdfSwicmVzb2x1dGlvbnMiOnsicjI0MHAiOmZhbHNlfSwib3B0aW9ucyI6eyJyZW1vdmVfcmFua3NfdW5kZXIiOi0xMDAwMDAwMDAwLCJhbGxvd19lbmdsaXNoX2luX2xhbmd1YWdlcyI6ZmFsc2UsInJlbW92ZV91bmtub3duX2xhbmd1YWdlcyI6ZmFsc2V9fQ==',
+    baseUrl: process.env.COMET_URL || 'https://comet.feels.legal/eyJtYXhSZXN1bHRzUGVyUmVzb2x1dGlvbiI6MCwibWF4U2l6ZSI6MCwiY2FjaGVkT25seSI6ZmFsc2UsInNvcnRDYWNoZWRVbmNhY2hlZFRvZ2V0aGVyIjpmYWxzZSwicmVtb3ZlVHJhc2giOnRydWUsInJlc3VsdEZvcm1hdCI6WyJhbGwiXSwiZGVicmlkU2VydmljZXMiOltdLCJlbmFibGVUb3JyZW50Ijp0cnVlLCJkZWR1cGxpY2F0ZVN0cmVhbXMiOmZhbHNlLCJzY3JhcGVEZWJyaWRBY2NvdW50VG9ycmVudHMiOmZhbHNlLCJkZWJyaWRTdHJlYW1Qcm94eVBhc3N3b3JkIjoiIiwibGFuZ3VhZ2VzIjp7InJlcXVpcmVkIjpbIm11bHRpIiwiaXQiXSwiYWxsb3dlZCI6WyJtdWx0aSIsIml0Il0sImV4Y2x1ZGUiOltdLCJwcmVmZXJyZWQiOltdfSwicmVzb2x1dGlvbnMiOnt9LCJvcHRpb25zIjp7InJlbW92ZV9yYW5rc191bmRlciI6LTEwMDAwMDAwMDAwLCJhbGxvd19lbmdsaXNoX2luX2xhbmd1YWdlcyI6ZmFsc2UsInJlbW92ZV91bmtub3duX2xhbmd1YWdlcyI6ZmFsc2V9fQ==',
     timeout: 3000,
     assumeItalian: true,
     enabled: true,
@@ -184,7 +184,7 @@ const EXTERNAL_ADDONS = [
   {
     key: 'stremthru',
     label: 'StremThru',
-    baseUrl: process.env.STREMTHRU_URL || 'https://stremthru.13377001.xyz/stremio/torz/eyJpbmRleGVycyI6bnVsbCwic3RvcmVzIjpbeyJjIjoicDJwIiwidCI6IiJ9XSwiZmlsdGVyIjoiXCJpdFwiIGluIExhbmd1YWdlcyBcdTAwMjZcdTAwMjYgUXVhbGl0eSAhPSBcIkNBTVwiIn0=',
+    baseUrl: process.env.STREMTHRU_URL || 'https://stremthru.13377001.xyz/stremio/torz/eyJpbmRleGVycyI6bnVsbCwic3RvcmVzIjpbeyJjIjoicDJwIiwidCI6IiJ9XSwic29ydCI6IlwiaXRcIiJ9',
     timeout: 3000,
     assumeItalian: true,
     enabled: true,
@@ -192,7 +192,7 @@ const EXTERNAL_ADDONS = [
   {
     key: 'meteor',
     label: 'Meteor',
-    baseUrl: process.env.METEOR_URL || 'https://meteorfortheweebs.midnightignite.me/eyJkZWJyaWRTZXJ2aWNlIjoidG9ycmVudCIsImRlYnJpZEFwaUtleSI6IiIsImNhY2hlZE9ubHkiOnRydWUsImVuYWJsZVlvdXJNZWRpYSI6ZmFsc2UsInlvdXJNZWRpYUxlZ2FjeU1vZGUiOmZhbHNlLCJzaG93WW91ck1lZGlhU3RyZWFtcyI6ZmFsc2UsInlvdXJNZWRpYVNvdXJjZXMiOlsidG9ycmVudCJdLCJyZW1vdmVUcmFzaCI6ZmFsc2UsInJlbW92ZVNhbXBsZXMiOmZhbHNlLCJyZW1vdmVBZHVsdCI6ZmFsc2UsImV4Y2x1ZGUzRCI6ZmFsc2UsImVuYWJsZVNlYURleCI6ZmFsc2UsImVuYWJsZVVzZW5ldCI6ZmFsc2UsInVzZW5ldEN1c3RvbUVuZ2luZXMiOmZhbHNlLCJtaW5TZWVkZXJzIjowLCJtYXhSZXN1bHRzIjowLCJtYXhSZXN1bHRzUGVyUmVzIjowLCJtYXhTaXplIjowLCJyZXNvbHV0aW9ucyI6W10sImxhbmd1YWdlcyI6eyJwcmVmZXJyZWQiOlsibXVsdGkiLCJpdCJdLCJyZXF1aXJlZCI6WyJpdCIsIm11bHRpIl0sImV4Y2x1ZGUiOltdfSwicmVzdWx0Rm9ybWF0IjpbInRpdGxlIiwicXVhbGl0eSIsInNpemUiLCJhdWRpbyJdLCJzb3J0T3JkZXIiOlsicGFjayIsImNhY2hlZCIsInlvdXJtZWRpYSIsInNlYWRleCIsInJlc29sdXRpb24iLCJzaXplIiwicXVhbGl0eSIsInNlZWRlcnMiLCJsYW5ndWFnZSIsInR5cGUiXX0',
+    baseUrl: process.env.METEOR_URL || 'https://meteorfortheweebs.midnightignite.me/eyJjYWNoZWRPbmx5Ijp0cnVlLCJza2lwUmVsZWFzZUZpbHRlciI6dHJ1ZSwicmVtb3ZlVHJhc2giOmZhbHNlLCJyZW1vdmVTYW1wbGVzIjpmYWxzZSwicmVtb3ZlQWR1bHQiOmZhbHNlLCJleGNsdWRlM0QiOmZhbHNlLCJlbmFibGVTZWFEZXgiOmZhbHNlLCJlbmFibGVVc2VuZXQiOmZhbHNlLCJ1c2VuZXRDdXN0b21FbmdpbmVzIjpmYWxzZSwiZW5hYmxlWW91ck1lZGlhIjpmYWxzZSwic2hvd1lvdXJNZWRpYVN0cmVhbXMiOnRydWUsInlvdXJNZWRpYVNvdXJjZXMiOltdLCJ5b3VyTWVkaWFMZWdhY3lNb2RlIjpmYWxzZSwibWluU2VlZGVycyI6MCwibWF4UmVzdWx0cyI6MCwibWF4UmVzdWx0c1BlclJlcyI6MCwibWF4U2l6ZSI6MCwicmVzb2x1dGlvbnMiOltdLCJsYW5ndWFnZXMiOnsicHJlZmVycmVkIjpbImVuIiwibXVsdGkiLCJpdCJdLCJyZXF1aXJlZCI6WyJpdCIsImVuIl0sImV4Y2x1ZGUiOltdfSwicmVzdWx0Rm9ybWF0IjpbInRpdGxlIiwicXVhbGl0eSIsInNpemUiLCJhdWRpbyJdLCJzb3J0T3JkZXIiOlsiY2FjaGVkIiwieW91cm1lZGlhIiwic2VhZGV4IiwicmVzb2x1dGlvbiIsInF1YWxpdHkiLCJ0eXBlIiwibGFuZ3VhZ2UiLCJzZWVkZXJzIiwic2l6ZSIsInBhY2siXX0',
     timeout: 3000,
     assumeItalian: true,
     enabled: true,
@@ -267,7 +267,7 @@ async function _fetchAddon(addon, type, id) {
       const res = await fetch(url, {
         signal: controller.signal,
         headers: {
-          'User-Agent': 'Pezzottio/0.1 (Stremio Addon)',
+          'User-Agent': 'ItaHub/0.1 (Stremio Addon)',
           'Accept': 'application/json',
         },
       });

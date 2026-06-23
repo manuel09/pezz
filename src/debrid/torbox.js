@@ -13,7 +13,7 @@ const TIMEOUT = 10000;
 function authHeaders() {
   return {
     Authorization: `Bearer ${getConfig().torboxKey}`,
-    'User-Agent': 'pezzottio',
+    'User-Agent': 'itahub',
   };
 }
 
@@ -24,7 +24,7 @@ async function getMylistMap(userKey) {
   if (entry && Date.now() - entry.t < 5 * 60 * 1000) return entry.map;
   try {
     const res = await fetch(`${BASE}/api/torrents/mylist?bypass_cache=true`, {
-      headers: { Authorization: `Bearer ${userKey}`, 'User-Agent': 'pezzottio' },
+      headers: { Authorization: `Bearer ${userKey}`, 'User-Agent': 'itahub' },
       timeout: TIMEOUT,
     });
     if (!res.ok) return new Map();

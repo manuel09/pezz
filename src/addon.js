@@ -12,11 +12,15 @@ const animeMeta = require('./anime-meta');
 const kitsu = require('./kitsu');
 const vidxgo = require('./providers/vidxgo');
 const streamingcommunity = require('./providers/streamingcommunity');
+const altadefinizione = require('./providers/altadefinizione');
+const guardahd = require('./providers/guardahd');
 const animepahe = require('./providers/animepahe');
 const external = require('./providers/external');
+const vidxgoProvider = require('./providers/vidxgo-provider');
+const cinemacity = require('./providers/cinemacity');
 const { findFileForEpisode } = require('./parse');
 
-const PUBLIC_HOST = process.env.PUBLIC_HOST || 'https://pezz8io.dpdns.org';
+const PUBLIC_HOST = process.env.PUBLIC_HOST || 'https://itahub.navidrome.dpdns.org';
 
 // Generi Kitsu (selezione: i più usati). Permette filter dropdown in Stremio.
 const KITSU_GENRES = [
@@ -28,9 +32,9 @@ const KITSU_GENRES = [
 ];
 
 const manifest = {
-  id: 'org.pezzottio.addon',
+  id: 'org.itahub.addon',
   version: require('../package.json').version,
-  name: 'PEZZOTTIO',
+  name: 'ITAHUB',
   description: 'Lo streaming italiano senza menate. Cerca film, serie e anime su 30+ tracker e mette sempre in cima l\'audio italiano. Integrazione con Torbox per riproduzione istantanea. Proxy HLS integrato server-side: niente MediaFlowProxy, niente Docker, niente VPS da configurare. Setup in 30 secondi.',
   logo: `${PUBLIC_HOST}/logo.png`,
   background: `${PUBLIC_HOST}/background.png`,
@@ -50,54 +54,54 @@ const manifest = {
     // anche le varianti series + movie. Il handler filtra i meta per type
     // così ogni catalog ritorna solo gli anime del suo tipo.
     {
-      id: 'pezzottio-anime-search',
+      id: 'itahub-anime-search',
       type: 'anime',
-      name: 'Pezzottio Anime',
+      name: 'ItaHub Anime',
       extra: [{ name: 'search', isRequired: true }],
     },
     {
-      id: 'pezzottio-anime-search-series',
+      id: 'itahub-anime-search-series',
       type: 'series',
-      name: 'Pezzottio Anime',
+      name: 'ItaHub Anime',
       extra: [{ name: 'search', isRequired: true }],
     },
     {
-      id: 'pezzottio-anime-search-movie',
+      id: 'itahub-anime-search-movie',
       type: 'movie',
-      name: 'Pezzottio Anime',
+      name: 'ItaHub Anime',
       extra: [{ name: 'search', isRequired: true }],
     },
     {
-      id: 'pezzottio-anime-airing',
+      id: 'itahub-anime-airing',
       type: 'anime',
-      name: 'Pezzottio Anime — In Onda',
+      name: 'ItaHub Anime — In Onda',
       extra: [
         { name: 'genre', options: KITSU_GENRES, isRequired: false },
         { name: 'skip', isRequired: false },
       ],
     },
     {
-      id: 'pezzottio-anime-popular',
+      id: 'itahub-anime-popular',
       type: 'anime',
-      name: 'Pezzottio Anime — Più Popolari',
+      name: 'ItaHub Anime — Più Popolari',
       extra: [
         { name: 'genre', options: KITSU_GENRES, isRequired: false },
         { name: 'skip', isRequired: false },
       ],
     },
     {
-      id: 'pezzottio-anime-rating',
+      id: 'itahub-anime-rating',
       type: 'anime',
-      name: 'Pezzottio Anime — Top Rated',
+      name: 'ItaHub Anime — Top Rated',
       extra: [
         { name: 'genre', options: KITSU_GENRES, isRequired: false },
         { name: 'skip', isRequired: false },
       ],
     },
     {
-      id: 'pezzottio-anime-newest',
+      id: 'itahub-anime-newest',
       type: 'anime',
-      name: 'Pezzottio Anime — Nuovi',
+      name: 'ItaHub Anime — Nuovi',
       extra: [
         { name: 'genre', options: KITSU_GENRES, isRequired: false },
         { name: 'skip', isRequired: false },
@@ -128,7 +132,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
       if (!externalOnly.length) return { streams: [] };
       // Formatto come torrent stream basico
       const streams = externalOnly.slice(0, getConfig().maxResults).map((t) => ({
-        name: `Pezzottio ${t.provider}\n${t.quality || 'SD'}`,
+        name: `ItaHub ${t.provider}\n${t.quality || 'SD'}`,
         title: `${t.title}\n👤 ${t.seeds ?? 0}  💾 ${t.sizeText || '?'}  ⚙️ ${t.provider}`,
         infoHash: t.infoHash,
         sources: t.trackers || [],
@@ -151,9 +155,15 @@ builder.defineStreamHandler(async ({ type, id }) => {
     // compat: tutti i link esistenti non hanno il campo `lang` → cadono in 'it' →
     // comportamento identico a oggi). Usata sotto per skippare i provider IT-only
     // quando l'utente vuole solo contenuti EN.
-    const lang = getConfig().lang;
+    const cfg = getConfig();
+    const lang = cfg.lang;
     const wantIT = lang !== 'en';   // 'it' o 'mixed' o undefined
     const wantEN = lang !== 'it';   // 'en' o 'mixed'
+
+    // Se l'utente ha scelto solo HTTP, skippiamo tutta la roba torrent/debrid
+    // (external addon + scraper interni) — zero senso chiamarli.
+    const userCfgEarly2 = getCurrentUserConfig() || {};
+    const onlyHttp = (userCfgEarly2.filter === 'http' || userCfgEarly2.onlyTorrent === 'http');
 
     // Master timeout per ogni fetch. 2-3s per provider INTERNI (TB/SC/AU + HTTP)
     // → /stream apre veloce, gli stream HTTP arrivano come "lazy URL placeholder"
@@ -187,14 +197,27 @@ builder.defineStreamHandler(async ({ type, id }) => {
     // Risultati paralleli: torrent + external + slugs animemapping.
     // VidXgo (GS) è IT-only → skippato se wantIT=false. SC ha multi-audio
     // ITA+ENG → sempre chiamato (defaultAudio gestito a livello di proxy master).
-    const [torrentsRaw, externalStreams, vxStream, scStream, slugsResult] = await Promise.all([
-      raceTimeout(searchTorrents(meta, type, imdbId), []),
-      raceTimeout(external.searchExternal(type, fullStremioId).catch(() => []), [], CAP_MS_EXTERNAL),
+    // Se onlyHttp, skippiamo torrent search e external addon.
+    const [torrentsRaw, externalStreams, vxStream, scStream, adnStream, ghStream, vxEpStream, ccStream, slugsResult] = await Promise.all([
+      onlyHttp ? Promise.resolve([]) : raceTimeout(searchTorrents(meta, type, imdbId), []),
+      onlyHttp ? Promise.resolve([]) : raceTimeout(external.searchExternal(type, fullStremioId).catch(() => []), [], CAP_MS_EXTERNAL),
       (!isAnime && imdbId && wantIT)
         ? raceTimeout(vidxgo.findStream(imdbId, meta.season, meta.episode, isMovie).catch(() => null), null)
         : Promise.resolve(null),
       (!isAnime && imdbId)
-        ? raceTimeout(streamingcommunity.findStream(imdbId, meta.season, meta.episode, isMovie).catch(() => null), null)
+        ? raceTimeout(streamingcommunity.findStream(imdbId, meta.season, meta.episode, isMovie).catch(() => null), null, 15000)
+        : Promise.resolve(null),
+      (!isAnime && imdbId)
+        ? raceTimeout(altadefinizione.findStream(imdbId, meta.season, meta.episode, isMovie).catch(() => null), null)
+        : Promise.resolve(null),
+      (!isAnime && imdbId)
+        ? raceTimeout(guardahd.findStream(imdbId, meta.season, meta.episode, isMovie).catch(() => null), null)
+        : Promise.resolve(null),
+      (!isAnime && imdbId)
+        ? raceTimeout(vidxgoProvider.findStream(imdbId, meta.season, meta.episode, isMovie).catch(() => null), null)
+        : Promise.resolve(null),
+      (!isAnime && imdbId)
+        ? raceTimeout(cinemacity.findStream(imdbId, meta.season, meta.episode, isMovie).catch(() => null), null, CAP_MS_EXTERNAL)
         : Promise.resolve(null),
       slugsPromise,
     ]);
@@ -288,13 +311,11 @@ builder.defineStreamHandler(async ({ type, id }) => {
       const apStreams = await raceTimeout(animepahe.findStreams(...httpProviderArgs).catch(() => []), []);
       httpStreams.push(...apStreams);
     }
-    // VidXgo: il CDN ha session/IP pinning sul token (token risolto da IP X
-    // funziona solo se richiesto dallo stesso IP). Bypass non praticabile →
-    // proxy URL come prima. ~half della banda HLS resta sul server.
+    // VidXgo (GS): proxy HLS server-side (fixa audio ITA + 1080p).
     if (vxStream && wantIT) {
       const s = vxStream.isMovie ? 'movie' : vxStream.season;
       const e = vxStream.isMovie ? 'movie' : vxStream.episode;
-      const proxyUrl = `${publicHost}/hls/vx/${vxStream.numericId}/${s}/${e}/master.m3u8`;
+      const proxyUrl = `${publicHost}/hls2/vx/${vxStream.numericId}/${s}/${e}/master.m3u8`;
       httpStreams.push({
         provider: 'GS',
         url: proxyUrl,
@@ -304,12 +325,61 @@ builder.defineStreamHandler(async ({ type, id }) => {
         quality: null,
       });
     }
-    // StreamingCommunity: proxy via /hls/sc/* (ripristinato dopo cambi
-    // server-side dell'upstream che hanno rotto l'emit diretto del playlist URL).
+    // Altadefinizione: CDN proxy via VPS (stessa IP WARP per API e CDN)
+    if (adnStream) {
+      const proxyUrl = `${publicHost}/proxy/adn/${adnStream.tmdbId}/${adnStream.isMovie ? 'movie' : adnStream.season}/${adnStream.isMovie ? 'movie' : adnStream.episode}/master.mp4`;
+      httpStreams.push({
+        provider: 'ADN',
+        url: proxyUrl,
+        name: meta.title,
+        italian: true,
+        italianSub: false,
+        quality: adnStream.quality || '720p',
+      });
+    }
+    // GuardaHD: stream diretto CDN con headers.
+    if (ghStream) {
+      httpStreams.push({
+        provider: 'GH',
+        url: ghStream.masterUrl,
+        proxyHeaders: ghStream.cdnHeaders,
+        name: meta.title,
+        italian: true,
+        italianSub: false,
+        quality: null,
+      });
+    }
+    // CinemaCity: direct CDN + proxyHeaders (come GH).
+    if (ccStream) {
+      httpStreams.push({
+        provider: 'CC',
+        url: ccStream.masterUrl,
+        name: meta.title,
+        italian: true,
+        italianSub: false,
+        quality: null,
+        proxyHeaders: ccStream.cdnHeaders,
+      });
+    }
+    // VidXgo (VX): proxy HLS server-side (fixa audio ITA + 1080p).
+    if (vxEpStream) {
+      const s = vxEpStream.isMovie ? 'movie' : vxEpStream.season;
+      const e = vxEpStream.isMovie ? 'movie' : vxEpStream.episode;
+      const proxyUrl = `${publicHost}/hls2/vd/${vxEpStream.numericId}/${s}/${e}/master.m3u8`;
+      httpStreams.push({
+        provider: 'VX',
+        url: proxyUrl,
+        name: meta.title,
+        italian: true,
+        italianSub: false,
+        quality: null,
+      });
+    }
+    // StreamingCommunity: proxy HLS con refresh token.
     if (scStream) {
       const s = scStream.isMovie ? 'movie' : scStream.season;
       const e = scStream.isMovie ? 'movie' : scStream.episode;
-      const proxyUrl = `${publicHost}/hls/sc/${scStream.tmdbId}/${s}/${e}/master.m3u8`;
+      const proxyUrl = `${publicHost}/hls2/sc/${scStream.tmdbId}/${s}/${e}/master.m3u8`;
       httpStreams.push({
         provider: 'SC',
         url: proxyUrl,
@@ -397,7 +467,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
       return parts.join('|');
     }
     const filenameHint = buildFilenameHint();
-    const bingeGroup = imdbId ? `pezzottio-${imdbId}` : null;
+    const bingeGroup = imdbId ? `itahub-${imdbId}` : null;
 
     // === RENDERING "PREMIUM" ===
     // Estrae i badge tecnici (source / codec / HDR / audio) dal nome del torrent.
@@ -444,14 +514,14 @@ builder.defineStreamHandler(async ({ type, id }) => {
     const titleHeader = buildTitleHeader();
 
     // 3 stili di formattazione selezionabili dall'utente in /configure:
-    //   - default 'pezzottio': layout proprietario Netflix-style
+    //   - default 'itahub': layout proprietario Netflix-style
     //   - 'aios': formato standard parsabile da AIOStreams e simili
     //   - 'torrentio': layout classico stile Torrentio (utenti Stremio storici)
     const aiosFormatter = require('./aiostreams-formatter');
     const torrentioFormatter = require('./torrentio-formatter');
     const userCfgEarly = getCurrentUserConfig() || {};
     // Backward compat: 'aios:true' legacy = stile aios
-    let formatStyle = userCfgEarly.style || 'pezzottio';
+    let formatStyle = userCfgEarly.style || 'itahub';
     if (userCfgEarly.aios === true || userCfgEarly.aios === 'true') formatStyle = 'aios';
 
     function svcFromLabel(label) {
@@ -488,7 +558,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
       if (formatStyle === 'aios') {
         const service = provLabel ? svcFromLabel(provLabel) : 'p2p';
         name = aiosFormatter.formatName({
-          addonName: 'Pezzottio', service, cached: !!url, quality: qualityLabel,
+          addonName: 'ItaHub', service, cached: !!url, quality: qualityLabel,
         });
         title = aiosFormatter.formatTitle({
           title: t.title || titleHeader,
@@ -501,7 +571,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
       } else if (formatStyle === 'torrentio') {
         const service = provLabel ? svcFromLabel(provLabel) : 'p2p';
         name = torrentioFormatter.formatName({
-          addonName: 'Pezzottio', service, cached: !!url, quality: qualityLabel,
+          addonName: 'ItaHub', service, cached: !!url, quality: qualityLabel,
         });
         title = torrentioFormatter.formatTitle({
           filename: t.title || titleHeader,
@@ -511,10 +581,10 @@ builder.defineStreamHandler(async ({ type, id }) => {
           packName: t.seasonPack ? t.title : null,
         });
       } else {
-        // pezzottio default
+        // itahub default
         name = provLabel
-          ? `Pezzottio ${provLabel}\n📺 ${qualityLabel}`
-          : `Pezzottio\n📺 ${qualityLabel}`;
+          ? `ItaHub ${provLabel}\n📺 ${qualityLabel}`
+          : `ItaHub\n📺 ${qualityLabel}`;
         const lines = [titleHeader];
         if (lang === 'en') {
           if (t.english) lines.push('🇺🇸  Audio ENG');
@@ -535,14 +605,14 @@ builder.defineStreamHandler(async ({ type, id }) => {
     const cacheHints = { cacheMaxAge: 10 * 60, staleRevalidate: 60, staleError: 60 * 60 };
 
     // Stream HTTP diretti. Vanno in cima.
-    const PROVIDER_LABELS = { AW: 'AnimeWorld', AS: 'AnimeSaturn', AU: 'AnimeUnity', GS: 'GuardaSerie', SC: 'StreamingCommunity' };
+    const PROVIDER_LABELS = { AW: 'AnimeWorld', AS: 'AnimeSaturn', AU: 'AnimeUnity', GS: 'GuardaSerie', VX: 'VidXgo', SC: 'StreamingCommunity', ADN: 'Altadefinizione', GH: 'GuardaHD', CC: 'CinemaCity' };
     function formatHttpStream(s) {
       const langSingle = lang === 'en'
         ? (s.english ? 'ENG' : s.englishSub ? 'Sub ENG' : null)
         : (s.italian ? 'ITA' : s.italianSub ? 'Sub ITA' : null);
       const providerFull = PROVIDER_LABELS[s.provider] || s.provider;
 
-      const behaviorHints = { notWebReady: true };
+      const behaviorHints = { notWebReady: !['ADN', 'CC'].includes(s.provider) };
       if (bingeGroup) behaviorHints.bingeGroup = bingeGroup;
       if (s.proxyHeaders) behaviorHints.proxyHeaders = { request: s.proxyHeaders };
       else if (s.referer) behaviorHints.proxyHeaders = { request: { Referer: s.referer } };
@@ -550,7 +620,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
       let name, title;
       if (formatStyle === 'aios') {
         name = aiosFormatter.formatName({
-          addonName: 'Pezzottio', service: 'http', quality: s.quality || 'Direct',
+          addonName: 'ItaHub', service: 'http', quality: s.quality || 'Direct',
         });
         title = aiosFormatter.formatTitle({
           title: meta.italianTitle || meta.title,
@@ -559,10 +629,10 @@ builder.defineStreamHandler(async ({ type, id }) => {
         });
       } else if (formatStyle === 'torrentio') {
         // Service = sigla provider (aw/as/au/gs/sc) → tag esplicito nel name:
-        // "[AW] Pezzottio HTTP", "[SC] Pezzottio HTTP", ecc.
+        // "[AW] ItaHub HTTP", "[SC] ItaHub HTTP", ecc.
         const svcKey = (s.provider || 'http').toLowerCase();
         name = torrentioFormatter.formatName({
-          addonName: 'Pezzottio', service: svcKey, quality: s.quality || 'HTTP',
+          addonName: 'ItaHub', service: svcKey, quality: s.quality || 'HTTP',
         });
         // Filename: prova estrazione dall'URL stream (utile per AW MP4 diretto
         // come "Naruto_Ep_001_ITA.mp4"). Fallback: titolo + sorgente.
@@ -577,7 +647,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
           languages: langsArr(s),
         });
       } else {
-        name = `Pezzottio ${s.provider}\n📺 HTTP`;
+        name = `ItaHub ${s.provider}\n📺 HTTP`;
         const lines = [titleHeader];
         if (lang === 'en') {
           if (s.english) lines.push('🇺🇸  Audio ENG');
@@ -592,7 +662,8 @@ builder.defineStreamHandler(async ({ type, id }) => {
       return { name, title, url: s.url, behaviorHints };
     }
     // Filter mode è SPECIFICO per film/serie: 'all' | 'torrent' | 'http'.
-    // Per anime invece c'è il toggle dedicato httpAnime (catalogo+HTTP insieme).
+    // Per anime: httpAnime controlla gli stream HTTP (AW/AS/AU), animeCatalog controlla
+    // i cataloghi home (serveManifest in index.js). Due toggle separati in configure.
     // Backward compat: vecchio onlyTorrent:true → filter='torrent'
     let filterMode = userCfgEarly.filter || 'all';
     if (userCfgEarly.onlyTorrent === true || userCfgEarly.onlyTorrent === 'true') filterMode = 'torrent';
@@ -600,7 +671,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
     const httpAnimeOn = !(userCfgEarly.httpAnime === false || userCfgEarly.httpAnime === 'false');
 
     const ANIME_PROVS = new Set(['AW', 'AS', 'AU']);
-    const FILM_PROVS = new Set(['GS', 'SC']);
+    const FILM_PROVS = new Set(['GS', 'VX', 'SC', 'ADN', 'GH']);
 
     // Hide flags content-type aware:
     //  - ANIME:   torrent sempre on, HTTP segue httpAnime, filterMode ignorato
@@ -712,7 +783,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
         console.log(`[RD] tmdb=${tmdbId} → 0 cached`);
         return [];
       }
-      // Trasforma ogni cached entry in candidato Pezzottio-compatible
+      // Trasforma ogni cached entry in candidato ItaHub-compatible
       const TRACKERS = [
         'udp://tracker.opentrackr.org:1337/announce',
         'udp://tracker.openbittorrent.com:6969/announce',
@@ -853,6 +924,22 @@ builder.defineStreamHandler(async ({ type, id }) => {
         ? [...awFormattedStreams, ...slicedDebrid]
         : [...slicedDebrid, ...awFormattedStreams];
     }
+
+    // === HTTP BINGE PREFETCH ===
+    // Se binge mode attivo e ci sono stream HTTP per questa serie, pre-risolviamo
+    // il prossimo episodio in background per scaldare le cache dei provider.
+    if (userCfg.prefetch === true && !isMovie && imdbId && meta.season && meta.episode && awFormattedStreams.length > 0) {
+      const { wasPrefetched, markPrefetched } = require('./prefetch');
+      const nextEp = meta.episode + 1;
+      const pKey = `http:${imdbId}:${meta.season}:${nextEp}`;
+      if (!wasPrefetched(pKey)) {
+        markPrefetched(pKey);
+        const nextId = `${imdbId}:${meta.season}:${nextEp}`;
+        const nextUrl = `${publicHost}/${cfgB64}/stream/series/${nextId}.json`;
+        require('node-fetch')(nextUrl, { timeout: 5000 }).catch(() => {});
+      }
+    }
+
     return { streams, ...cacheHints };
   } catch (err) {
     console.error('[stream handler]', err);
@@ -861,8 +948,8 @@ builder.defineStreamHandler(async ({ type, id }) => {
 });
 
 // === CATALOG HANDLER ===
-// Cataloghi anime backed da Kitsu API. ID format: pezzottio-anime-<key>.
-// Search: usa il catalog 'pezzottio-anime-search' con extra.search=QUERY.
+// Cataloghi anime backed da Kitsu API. ID format: itahub-anime-<key>.
+// Search: usa il catalog 'itahub-anime-search' con extra.search=QUERY.
 // Liste: airing | popular | rating | newest, paginate via extra.skip, filtrate
 // da extra.genre.
 builder.defineCatalogHandler(async ({ type, id, extra }) => {
@@ -872,7 +959,7 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
     const search = extra?.search || null;
 
     let metas = [];
-    const isSearch = id.startsWith('pezzottio-anime-search');
+    const isSearch = id.startsWith('itahub-anime-search');
     if (isSearch) {
       if (!search) return { metas: [], cacheMaxAge: 60 };
       metas = await kitsu.search(search, { skip });
@@ -882,8 +969,8 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
       if (type === 'series' || type === 'movie') {
         metas = metas.filter((m) => m.type === type);
       }
-    } else if (id.startsWith('pezzottio-anime-')) {
-      const key = id.replace('pezzottio-anime-', ''); // airing|popular|rating|newest
+    } else if (id.startsWith('itahub-anime-')) {
+      const key = id.replace('itahub-anime-', ''); // airing|popular|rating|newest
       metas = await kitsu.getCatalog(key, { skip, genre });
     } else {
       return { metas: [] };

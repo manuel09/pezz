@@ -660,6 +660,96 @@ function buildSeriesQuery(meta) {
   return `${meta.title} S${s}E${e}`;
 }
 
+// === ICV DB (IlCorsaroViola database) ===
+// Database torrent italiano con 445K+ entry, indicizzato per IMDB ID.
+// Richiede login via password (ICV_PASSWORD env) e session cookie.
+let icvCookie = null;
+let icvCookieExpires = 0;
+
+async function icvLogin() {
+  const host = process.env.ICV_HOST;
+  if (!host) return false;
+  try {
+    const res = await fetch(`${host}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `password=${encodeURIComponent(process.env.ICV_PASSWORD || '')}`,
+      redirect: 'manual',
+      timeout: 5000,
+    });
+    const setCookie = res.headers.get('set-cookie');
+    if (setCookie) {
+      icvCookie = setCookie.split(';')[0];
+      icvCookieExpires = Date.now() + 25 * 60 * 1000;
+      return true;
+    }
+    return false;
+  } catch (e) {
+    console.error('[ICV] login error:', e.message);
+    return false;
+  }
+}
+
+async function searchIcvDb(imdbId) {
+  if (!imdbId) return [];
+  const host = process.env.ICV_HOST;
+  if (!host) return [];
+  return cached(`icv:${imdbId}`, async () => {
+    // Login se cookie assente o scaduto
+    if (!icvCookie || Date.now() > icvCookieExpires) {
+      if (!(await icvLogin())) return [];
+    }
+    try {
+      const res = await fetch(`${host}/imdb-group/${imdbId}`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0',
+          'Accept': 'application/json',
+          'Cookie': icvCookie,
+        },
+        timeout: 8000,
+      });
+      if (!res.ok || !res.headers.get('content-type')?.includes('json')) {
+        // Cookie scaduto? Riprova una volta con login refresh
+        if (await icvLogin()) {
+          const retry = await fetch(`${host}/imdb-group/${imdbId}`, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0',
+              'Accept': 'application/json',
+              'Cookie': icvCookie,
+            },
+            timeout: 8000,
+          });
+          if (!retry.ok) return [];
+          const data = await retry.json();
+          return parseIcvResponse(data);
+        }
+        return [];
+      }
+      const data = await res.json();
+      return parseIcvResponse(data);
+    } catch {
+      return [];
+    }
+  });
+}
+
+function parseIcvResponse(data) {
+  if (!data?.success || !Array.isArray(data.torrents)) return [];
+  return data.torrents.map((t) => ({
+    title: `${t.title} [ICV]`,
+    infoHash: t.info_hash.toLowerCase(),
+    magnet: magnetFromHash(t.info_hash, t.title),
+    seeds: t.seeders || 0,
+    peers: 0,
+    sizeText: t.size || null,
+    quality: parseQuality(t.title),
+    trackers: TRACKERS,
+    provider: 'ICV',
+    italian: isItalian(t.title),
+    italianSub: hasItalianSub(t.title),
+  }));
+}
+
 async function searchTorrents(meta, type, imdbId) {
   let buckets = [];
 
@@ -685,6 +775,7 @@ async function searchTorrents(meta, type, imdbId) {
     const skipItaQueries = _lang === 'en';
     // Solid: 1 sola query (è permissivo, ITA emergono comunque). Bitsearch ulteriore fonte ITA.
     const baseSearches = [
+      imdbId ? searchIcvDb(imdbId) : Promise.resolve([]),
       searchYTS(meta),
       searchApibay(q),                  // se IP cloud 403, cooldown 1h
       searchApibaySingle(cleanTitle),
@@ -730,6 +821,7 @@ async function searchTorrents(meta, type, imdbId) {
       ? `${cleanItalianTitle} S${sPadded}E${ePadded}` : null;
     const skipItaQueries = _lang === 'en';
     const baseSearches = [
+      imdbId ? searchIcvDb(imdbId) : Promise.resolve([]),
       imdbId ? searchEZTV(meta, imdbId) : Promise.resolve([]),
       searchApibay(q),
       searchTrio(q),
@@ -814,6 +906,7 @@ async function searchTorrents(meta, type, imdbId) {
     if (!otherQueries.length) otherQueries.push(cleanTitle);
 
     buckets = await Promise.all([
+      imdbId ? searchIcvDb(imdbId) : Promise.resolve([]),
       ...nyaaQueries.map((q) => searchNyaa(q)),
       // TokyoTosho: stessa fonte primary che usa Torrentio per anime. Scrapato
       // direttamente per non dipendere dal timeout/breaker dell'aggregator.

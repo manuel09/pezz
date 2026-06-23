@@ -35,7 +35,7 @@ const GET_HEADERS = {
 // Header playback verso il CDN. Critico: il CDN richiede i Client Hints
 // (sec-ch-ua-*) di Chrome, altrimenti risponde 403. Verificato 2026-05-26.
 const PLAYBACK_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
+  'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/139.0.0.0',
   'Accept': '*/*',
   'Accept-Language': 'en-US,en;q=0.9',
   'Referer': `${VIDXGO_DOMAIN}/`,
@@ -141,9 +141,6 @@ async function cdnFetch(url, extraHeaders = {}) {
 
 async function findStream(imdbId, season, episode, isMovie) {
   if (!imdbId || !imdbId.startsWith('tt')) return null;
-  // Skip rapido se provider in cooldown post-403 ip_range (verificato 2026-06-01:
-  // upstream blocca server-side IPs con response {"error":"blocked","block_type":"ip_range"}).
-  if (isDown()) return null;
   const numericId = imdbId.replace('tt', '');
   const ckey = `vx:${numericId}:${season || ''}:${episode || ''}`;
   const cached = cacheGet(ckey);
@@ -157,18 +154,13 @@ async function findStream(imdbId, season, episode, isMovie) {
       timeout: 8000,
       redirect: 'follow',
     });
-    if (probe.status === 403) {
-      markDown(`probe 403 (${path})`);
-      return null;
-    }
-    if (!probe.ok) return null;
+    if (!probe.ok && probe.status !== 403) return null;
 
     // Verifico anche che /t/ risponda (a volte la pagina esiste ma niente stream)
     const master = await getMasterUrlCached(numericId, season, episode, isMovie);
     if (!master.url) return null;
 
-    // Successo → se eravamo down ma siamo arrivati qui, evidentemente l'upstream
-    // è tornato. Clear del flag (anche se di solito non capita perché isDown()
+    // Se eravamo down ma siamo arrivati qui, upstream è tornato
     // skippa prima — questo branch serve solo dopo restart server).
     clearDown();
 
@@ -178,6 +170,8 @@ async function findStream(imdbId, season, episode, isMovie) {
       season: season || null,
       episode: episode || null,
       isMovie: !!isMovie,
+      masterUrl: master.url,
+      cdnHeaders: { ...PLAYBACK_HEADERS },
     };
     cacheSet(ckey, out);
     return out;
@@ -196,14 +190,14 @@ async function resolveSegmentUrl(numericId, season, episode, isMovie, segmentPat
   if (!r.ok) throw new Error(`master CDN ${r.status}`);
   const masterText = await r.text();
   // Trovo URL di una quality playlist (per HLS multi-bitrate). In casi semplici è l'unica.
-  const playlistLines = masterText.split(/\r?\n/).filter((l) => l && !l.startsWith('#'));
+  const playlistLines = masterText.split("\n").filter((l) => l && !l.startsWith('#'));
   const baseUrl = master.url.replace(/[^\/]+\?.*$/, ''); // dir del master
   for (const line of playlistLines) {
     const playlistUrl = line.startsWith('http') ? line : baseUrl + line;
     const pr = await cdnFetch(playlistUrl);
     if (!pr.ok) continue;
     const ptext = await pr.text();
-    const segs = ptext.split(/\r?\n/).filter((l) => l && !l.startsWith('#'));
+    const segs = ptext.split("\n").filter((l) => l && !l.startsWith('#'));
     for (const s of segs) {
       const segUrl = s.startsWith('http') ? s : new URL(s, playlistUrl).toString();
       // Match per il nome del segment (path component)
@@ -227,4 +221,4 @@ function clearCaches() {
   return sizes;
 }
 
-module.exports = { findStream, getMasterUrlCached, cdnFetch, resolveSegmentUrl, isDown, clearCaches };
+module.exports = { findStream, getMasterUrlCached, cdnFetch, resolveSegmentUrl, clearCaches };

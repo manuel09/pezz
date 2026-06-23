@@ -1,5 +1,7 @@
 node_modules/
 .env
+.encryption_key
+.config_key
 *.log
 .DS_Store
 .gcache.json
@@ -9,3 +11,16 @@ assets/anime-mapping.json
 *.local.js
 *.local.json
 scripts/
+.warp/
+warp-registration.json
+*.wireguard.conf
+
+# Test files
+test_*.js
+
+# Runtime artifacts
+cloudflared
+itahub.tar.gz
+nohup.out
+profiles_db.json
+.sessions.json

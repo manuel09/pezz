@@ -22,7 +22,7 @@ const SERVICE_ABBR = {
   p2p: 'P2P',
 };
 
-function formatName({ addonName = 'Pezzottio', service, cached, quality, hasError = false }) {
+function formatName({ addonName = 'ItaHub', service, cached, quality, hasError = false }) {
   const svcKey = String(service || 'p2p').toLowerCase();
   const abbr = SERVICE_ABBR[svcKey] || 'P2P';
   const errorTag = hasError ? ' ⚠️' : '';

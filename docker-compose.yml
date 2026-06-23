@@ -1,0 +1,21 @@
+version: "3.8"
+services:
+  gluetun:
+    image: qmcgaw/gluetun
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - VPN_SERVICE_PROVIDER=protonvpn
+      - VPN_TYPE=openvpn
+      - OPENVPN_USER=${PROTONVPN_USER}
+      - OPENVPN_PASSWORD=${PROTONVPN_PASSWORD}
+      - SERVER_COUNTRIES=Netherlands
+      - FREE_ONLY=on
+      - HTTPPROXY=on
+      - HTTPPROXY_PORT=8888
+    ports:
+      - 127.0.0.1:8888:8888/tcp
+    restart: unless-stopped

@@ -1,5 +1,5 @@
 {
-  "name": "pezzottio-stremio-addon",
+  "name": "itahub-stremio-addon",
   "version": "0.5.0",
   "description": "Stremio addon: torrent search + RealDebrid/Torbox",
   "main": "src/index.js",
@@ -15,7 +15,10 @@
     "cycletls": "^2.0.5",
     "dotenv": "^16.4.5",
     "express": "^4.22.2",
+    "express-session": "^1.19.0",
+    "https-proxy-agent": "^7.0.6",
     "node-fetch": "^2.7.0",
+    "socks-proxy-agent": "^10.0.0",
     "stremio-addon-sdk": "^1.6.10"
   }
 }

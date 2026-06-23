@@ -1,7 +1,7 @@
 // Torrentio-style stream formatter.
 // Layout familiare alla maggior parte degli utenti Stremio che vengono da
 // addon tipo Torrentio / IlCorsaroViola:
-//   name:        "[SERVICE⚡] Pezzottio quality"
+//   name:        "[SERVICE⚡] ItaHub quality"
 //                (una riga, parentesi quadra, simbolo cache)
 //   description: "🎬 filename
 //                💾 size 👤 seeders
@@ -44,7 +44,7 @@ function langsToFlags(langs) {
   return arr.map((l) => LANG_FLAG[String(l).toLowerCase()] || '').filter(Boolean);
 }
 
-function formatName({ addonName = 'Pezzottio', service, cached, quality }) {
+function formatName({ addonName = 'ItaHub', service, cached, quality }) {
   const svcKey = String(service || 'p2p').toLowerCase();
   const abbr = SERVICE_ABBR[svcKey] || 'P2P';
   const q = quality || 'Unknown';

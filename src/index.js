@@ -1,10 +1,16 @@
 const express = require('express');
 const fetch = require('node-fetch');
+const { proxyFetch, isProxyAvailable } = require('./proxy');
+const wireproxy = require('./wireproxy');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { getRouter } = require('stremio-addon-sdk');
 const addonInterface = require('./addon');
-const { getConfig, runWithConfig, decodeConfig } = require('./config');
+const { getConfig, runWithConfig, decodeConfig, encodeConfig } = require('./config');
 const configurePage = require('./pages/configure');
 const configurePageEN = require('./pages/configure-en');
+const session = require('./session');
 
 const app = express();
 app.use(express.json({ limit: '64kb' }));
@@ -38,8 +44,8 @@ function publicBase(req) {
 
 // Path noti del SDK / app che NON sono config codificate.
 const KNOWN_PATHS = new Set([
-  'configure', 'configure-en', 'api', 'debug', 'play', 'hls', 'hls2', 'dl', 'resolve', 'extra', 'extra-en', 'donate', 'manifest.json', 'stream', 'meta', 'catalog', 'subtitles',
-  'logo.png', 'logo.svg', 'background.png', 'background.svg', 'pezzottio-logo.png',
+  'configure', 'configure-en', 'api', 'debug', 'play', 'hls', 'hls2', 'dl', 'resolve', 'extra', 'extra-en', 'proxy', 'donate', 'manifest.json', 'stream', 'meta', 'catalog', 'subtitles',
+  'logo.png', 'logo.svg', 'background.png', 'background.svg', 'itahub-logo.png',
   'changelog',
 ]);
 
@@ -50,9 +56,12 @@ if (_localCache && typeof _localCache.setup === 'function') {
   try { _localCache.setup({ app, KNOWN_PATHS }); } catch (_) {}
 }
 
-// Middleware: se il primo segmento del path è una config base64,
-// decodificala, ricava req.userConfig e riscrivi req.url.
-// Altrimenti req.userConfig = {} e prosegue.
+// Middleware: se il primo segmento del path è:
+//   1) una config cifrata o base64 → decodifica (backward compat)
+//   2) un session ID (32 hex) → carica config + profilo attivo
+//   3) un profile ID (10 char alfanumerici) → risolvi dal DB
+// In tutti i casi popola req.userConfig e riscrive req.url.
+// Se non matcha nulla noto, 404.
 app.use((req, res, next) => {
   const match = req.url.match(/^\/([^/?]+)(\/.*)?$/);
   const seg = match ? match[1] : null;
@@ -62,13 +71,23 @@ app.use((req, res, next) => {
     return next();
   }
 
+  // Config cifrata o base64 legacy
   const user = decodeConfig(seg);
-  if (!user) {
-    return res.status(404).send('Config non valida');
+  if (user) {
+    req.userConfig = user;
+    req.url = match[2] || '/';
+    return next();
   }
-  req.userConfig = user;
-  req.url = match[2] || '/';
-  next();
+
+  // Session ID (32 hex)
+  const sess = session.getSession(seg);
+  if (sess) {
+    req.userConfig = { ...sess.config };
+    req.url = match[2] || '/';
+    return next();
+  }
+
+  return res.status(404).send('URL non valido');
 });
 
 // /configure (sia "/configure" che "/:config/configure" arrivano qui:
@@ -86,8 +105,8 @@ app.get('/configure', (req, res) => {
       filter: req.userConfig.filter || null,
       fullIta: req.userConfig.fullIta === true || req.userConfig.fullIta === 'true',
       prefetch: req.userConfig.prefetch === true || req.userConfig.prefetch === 'true',
-      // Default ON. Diventa false solo se l'utente l'ha disattivato esplicitamente.
       httpAnime: !(req.userConfig.httpAnime === false || req.userConfig.httpAnime === 'false'),
+      animeCatalog: !(req.userConfig.animeCatalog === false || req.userConfig.animeCatalog === 'false'),
     })
   );
 });
@@ -110,6 +129,7 @@ app.get('/configure-en', (req, res) => {
       fullIta: req.userConfig.fullIta === true || req.userConfig.fullIta === 'true',
       prefetch: req.userConfig.prefetch === true || req.userConfig.prefetch === 'true',
       httpAnime: !(req.userConfig.httpAnime === false || req.userConfig.httpAnime === 'false'),
+      animeCatalog: !(req.userConfig.animeCatalog === false || req.userConfig.animeCatalog === 'false'),
     })
   );
 });
@@ -153,16 +173,17 @@ async function testTorbox(key) {
 }
 
 // === HLS PROXY (GuardaSerie + StreamingCommunity + AnimeUnity) ===
-// Pezzottio fa da bridge tra Stremio e i CDN dei provider HLS:
+// ItaHub fa da bridge tra Stremio e i CDN dei provider HLS:
 // 1) Stremio chiede master.m3u8 al nostro endpoint
 // 2) Noi fetciamo il CDN con header validi (CDN accetta)
 // 3) Riscriviamo le URL interne del manifest per puntarle al nostro proxy
 // 4) Per ogni segment, ricaviamo URL signed fresh (no TTL stop)
 //
-// Routing: /hls/{vx|sc|au}/:id/:season/:episode/...
+// Routing: /hls/{vx|sc|au|gh}/:id/:season/:episode/...
 //   - vx = GuardaSerie  (id = imdb number)
 //   - sc = StreamingCommunity (id = tmdb)
 //   - au = AnimeUnity (id = anime id upstream)
+//   - gh = GuardaHD     (id = imdb, MostraGuarda → VixCloud HLS)
 //
 // Il router è montato su /hls e /hls2 (alias) per supportare cache-busting:
 // se si vuole forzare CF a invalidare le response cached, basta cambiare il
@@ -170,14 +191,17 @@ async function testTorbox(key) {
 // servono lo stesso router con lo stesso behavior. Default è /hls perché è
 // quello che CF Worker / regole esistenti già conoscono.
 const vidxgo = require('./providers/vidxgo');
+const vidxgoProvider = require('./providers/vidxgo-provider');
 const streamingcommunity = require('./providers/streamingcommunity');
 const animeunity = require('./providers/animeunity');
+const altadefinizione = require('./providers/altadefinizione');
+const guardahd = require('./providers/guardahd');
 
 // Dominio upstream StreamingCommunity. Localizzato qui per non duplicare la
 // stringa in ogni debug endpoint sotto.
 const SC_UPSTREAM = process.env.SC_UPSTREAM || 'https://vixsrc.to';
 
-const PROVIDERS = { vx: vidxgo, sc: streamingcommunity, au: animeunity };
+const PROVIDERS = { vx: vidxgo, vd: vidxgoProvider, sc: streamingcommunity, au: animeunity, gh: guardahd };
 
 // hlsBase deriva il prefix dal mount point del router (req.baseUrl = "/hls"
 // o "/hls2"). In questo modo gli URL riscritti restano sullo stesso prefix
@@ -203,8 +227,6 @@ function parseSE(req) {
 // (EXT-X-MEDIA per audio/sub) verso il nostro proxy /hls/.../playlist/ENC.m3u8.
 const QUALITY_PRIORITY = [
   { tag: 'RESOLUTION=1920x1080', label: '1080p' },
-  { tag: 'RESOLUTION=1280x720', label: '720p' },
-  { tag: 'RESOLUTION=854x480', label: '480p' },
 ];
 const hlsRouter = express.Router();
 hlsRouter.get('/:prov/:id/:season/:episode/master.m3u8', async (req, res) => {
@@ -220,119 +242,32 @@ hlsRouter.get('/:prov/:id/:season/:episode/master.m3u8', async (req, res) => {
 
     // Parse del master playlist: separo HEADER (tag globali + EXT-X-MEDIA),
     // STREAM-INF blocks (coppie #EXT-X-STREAM-INF: ... + URL playlist video).
+    // TEST: proxy CON SOLO URL REWRITING — nessun quality filtering, nessuna
+    // modifica strutturale. Il master è identico al CDN, solo gli URL sono
+    // riscritti al proxy. Se l'audio funziona qui ma non con quality filtering,
+    // il problema è nel filtraggio qualità.
     const rawLines = text.split(/\r?\n/);
-    const headerLines = [];
-    const streamBlocks = []; // [{ infLine, urlLine }]
-    for (let i = 0; i < rawLines.length; i++) {
-      const line = rawLines[i];
-      if (!line) continue;
-      if (line.startsWith('#EXT-X-STREAM-INF:')) {
-        // Successiva riga non-comment è l'URL del playlist video
-        let j = i + 1;
-        while (j < rawLines.length && (rawLines[j].startsWith('#') || !rawLines[j].trim())) j++;
-        const urlLine = rawLines[j] || '';
-        streamBlocks.push({ infLine: line, urlLine });
-        i = j;
-      } else {
-        headerLines.push(line);
+    const rewritten = rawLines.map((line) => {
+      if (!line) return line;
+      if (line.startsWith('#')) {
+        // Rewrite URI="..." in tutti i tag (EXT-X-MEDIA, EXT-X-KEY, etc.)
+        return line.replace(/URI="([^"]+)"/g, (_, u) => {
+          const absUrl = u.startsWith('http') ? u : new URL(u, master.url).toString();
+          const encoded = Buffer.from(absUrl).toString('base64url');
+          return `URI="${myBase}/playlist/${encoded}.m3u8"`;
+        });
       }
-    }
-
-    // Helper: riscrivi qualunque URL al nostro proxy
-    function rewriteUrl(u) {
-      const absUrl = u.startsWith('http') ? u : new URL(u, master.url).toString();
-      const encoded = Buffer.from(absUrl).toString('base64url');
-      return `${myBase}/playlist/${encoded}.m3u8`;
-    }
-    // Se lang='en', SC ha multi-audio (ITA default + ENG). Swappiamo i flag
-    // DEFAULT/AUTOSELECT per far selezionare al player la traccia ENG di default.
-    // Lang dalla config utente (default 'it' → comportamento attuale identico).
-    const _userLang = getConfig().lang;
-    const swapAudioToEN = _userLang === 'en';
-    function rewriteHeaderLine(line) {
-      let out = line.replace(/URI="([^"]+)"/g, (_, u) => `URI="${rewriteUrl(u)}"`);
-      if (swapAudioToEN && /^#EXT-X-MEDIA:[^]*TYPE=AUDIO/.test(out)) {
-        if (/LANGUAGE="ita"/i.test(out)) {
-          // Traccia ITA: non più default
-          out = out.replace(/DEFAULT=YES/g, 'DEFAULT=NO').replace(/AUTOSELECT=YES/g, 'AUTOSELECT=NO');
-        } else if (/LANGUAGE="eng"/i.test(out)) {
-          // Traccia ENG: marca DEFAULT=YES + AUTOSELECT=YES (forza se mancanti)
-          out = /DEFAULT=NO/.test(out) ? out.replace(/DEFAULT=NO/g, 'DEFAULT=YES') :
-                /DEFAULT=YES/.test(out) ? out : out.replace(/^#EXT-X-MEDIA:/, '#EXT-X-MEDIA:DEFAULT=YES,');
-          out = /AUTOSELECT=NO/.test(out) ? out.replace(/AUTOSELECT=NO/g, 'AUTOSELECT=YES') :
-                /AUTOSELECT=YES/.test(out) ? out : out.replace(/^#EXT-X-MEDIA:/, '#EXT-X-MEDIA:AUTOSELECT=YES,');
-        }
-      }
-      return out;
-    }
-
-    // Scelgo la qualità preferita: 1080p > 720p > 480p, fallback al primo trovato
-    let chosenBlock = null;
-    let chosenLabel = null;
-    for (const q of QUALITY_PRIORITY) {
-      const found = streamBlocks.find((b) => b.infLine.includes(q.tag));
-      if (found) { chosenBlock = found; chosenLabel = q.label; break; }
-    }
-    if (!chosenBlock && streamBlocks.length) {
-      chosenBlock = streamBlocks[0]; // fallback se nessuna risoluzione standard
-      chosenLabel = 'fallback';
-    }
-    if (!chosenBlock) {
-      // Nessun STREAM-INF nel master (es. master è già a singola qualità) →
-      // riscrivo tutto come faceva la versione precedente
-      const lines = rawLines.map((line) => {
-        if (!line || line.startsWith('#')) return rewriteHeaderLine(line);
-        return rewriteUrl(line);
-      });
-      res.setHeader('Cache-Control', 'public, max-age=30');
-      return res.type('application/vnd.apple.mpegurl').send(lines.join('\n'));
-    }
-
-    // Costruisco master ridotto: solo HEADER (riscritti) + lo STREAM-INF scelto.
-    // Rinforzo HLS per player mobile strict (AVPlayer iOS in particolare):
-    //   1. EXT-X-INDEPENDENT-SEGMENTS se assente (AVPlayer lo vuole)
-    //   2. Se nessun EXT-X-MEDIA TYPE=AUDIO presente (= audio muxato nel video,
-    //      tipico file VidXgo single-variant), aggiungo una EXT-X-MEDIA fittizia
-    //      con DEFAULT=YES,LANGUAGE="ita" + AUDIO="audio" sul EXT-X-STREAM-INF
-    //      → segnala esplicitamente al player che esiste una traccia audio
-    //      default ITA da riprodurre (senza questo, AVPlayer iOS a volte
-    //      "dimentica" di abilitare l'audio del segment muxato).
-    const out = [];
-    const hasIndependentSegments = headerLines.some((h) => h.startsWith('#EXT-X-INDEPENDENT-SEGMENTS'));
-    const hasAudioMedia = headerLines.some((h) => /^#EXT-X-MEDIA:[^]*TYPE=AUDIO/.test(h));
-    let infLine = chosenBlock.infLine;
-    if (!hasAudioMedia && !/AUDIO="[^"]+"/.test(infLine)) {
-      // Audio muxato (no separate track): inietto group hint per il player mobile.
-      // Inserisco la EXT-X-MEDIA DOPO #EXTM3U/EXT-X-VERSION (ordine HLS spec).
-      infLine = infLine.replace(/(#EXT-X-STREAM-INF:[^,]*),/, '$1,AUDIO="audio",');
-      // Fallback se la regex sopra non matcha (caso bizzarro)
-      if (!/AUDIO="audio"/.test(infLine)) {
-        infLine = infLine.replace(/#EXT-X-STREAM-INF:/, '#EXT-X-STREAM-INF:AUDIO="audio",');
-      }
-    }
-
-    for (const h of headerLines) {
-      if (h.startsWith('#')) out.push(rewriteHeaderLine(h));
-      else out.push(h);
-    }
-    if (!hasIndependentSegments) {
-      // Inserisco subito dopo #EXTM3U (prima riga di solito)
-      const insertAt = out.findIndex((l) => l.startsWith('#EXTM3U'));
-      if (insertAt >= 0) {
-        out.splice(insertAt + 1, 0, '#EXT-X-INDEPENDENT-SEGMENTS');
-      } else {
-        out.unshift('#EXT-X-INDEPENDENT-SEGMENTS');
-      }
-    }
-    if (!hasAudioMedia) {
-      out.push('#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Italian",DEFAULT=YES,AUTOSELECT=YES,LANGUAGE="ita"');
-    }
-    out.push(infLine);
-    out.push(rewriteUrl(chosenBlock.urlLine));
-
-    res.setHeader('X-Quality', chosenLabel);
-    res.setHeader('Cache-Control', 'public, max-age=30');
-    res.type('application/vnd.apple.mpegurl').send(out.join('\n'));
+      // Variant URL → proxy
+      const absUrl = line.startsWith('http') ? line : new URL(line, master.url).toString();
+      return `${myBase}/playlist/${Buffer.from(absUrl).toString('base64url')}.m3u8`;
+    });
+    // Passa TUTTI gli header CDN, poi sovrascrive Content-Type per HLS
+    r.headers.forEach((v, k) => {
+      if (k !== 'content-encoding' && k !== 'transfer-encoding') res.setHeader(k, v);
+    });
+    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.send(rewritten.join('\n'));
   } catch (e) {
     console.error('[hls master]', req.params.prov, e.message);
     res.status(500).send('proxy error: ' + e.message);
@@ -367,8 +302,13 @@ hlsRouter.get('/:prov/:id/:season/:episode/playlist/:encUrl.m3u8', async (req, r
       const encoded = Buffer.from(absUrl).toString('base64url');
       return `${myBase}/seg/${segName}?u=${encoded}`;
     });
-    res.setHeader('Cache-Control', 'public, max-age=30');
-    res.type('application/vnd.apple.mpegurl').send(lines.join('\n'));
+    // Passa TUTTI gli header CDN
+    r.headers.forEach((v, k) => {
+      if (k !== 'content-encoding' && k !== 'transfer-encoding') res.setHeader(k, v);
+    });
+    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.send(lines.join('\n'));
   } catch (e) {
     console.error('[hls playlist]', req.params.prov, e.message);
     res.status(500).send('proxy error: ' + e.message);
@@ -398,6 +338,7 @@ hlsRouter.get('/:prov/:id/:season/:episode/key/:encUrl', async (req, res) => {
 });
 
 // Segment binary: fetch + stream. Se token scaduto, rinnova e ricerca segment.
+// ffmpeg NON viene usato — video passa intonso.
 hlsRouter.get('/:prov/:id/:season/:episode/seg/:segName', async (req, res) => {
   const prov = PROVIDERS[req.params.prov];
   if (!prov) return res.status(404).send('unknown provider');
@@ -406,11 +347,11 @@ hlsRouter.get('/:prov/:id/:season/:episode/seg/:segName', async (req, res) => {
     let segUrl = req.query.u ? Buffer.from(req.query.u, 'base64url').toString('utf8') : null;
 
     async function fetchSeg(url) {
-      return prov.cdnFetch(url, { 'Range': req.headers.range || '' });
+      return prov.cdnFetch(url, req.headers.range ? { 'Range': req.headers.range } : {});
     }
 
     let r = segUrl ? await fetchSeg(segUrl) : null;
-    if (!r || r.status === 403 || r.status === 410 || r.status === 404) {
+    if (!r || r.status === 403 || r.status === 410 || r.status === 404 || r.status === 400) {
       console.log('[hls seg]', req.params.prov, req.params.segName, 'token expired, refreshing');
       const fresh = await prov.resolveSegmentUrl(req.params.id, season, episode, isMovie, req.params.segName);
       if (fresh) {
@@ -421,16 +362,11 @@ hlsRouter.get('/:prov/:id/:season/:episode/seg/:segName', async (req, res) => {
     if (!r || !r.ok) return res.status(r ? r.status : 502).end();
 
     res.status(r.status);
-    // NON inoltro il cache-control dell'origin (CDN imposta no-cache/private).
-    // I segment HLS sono immutabili per URL (token incluso nel pathname/query):
-    // forzo public+max-age lungo così Cloudflare li tiene in cache 1 mese e
-    // risponde dall'edge senza colpire il nostro server.
-    const passThrough = ['content-type', 'content-length', 'content-range', 'accept-ranges'];
-    for (const h of passThrough) {
-      const v = r.headers.get(h);
-      if (v) res.setHeader(h, v);
-    }
-    res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
+    // Passa TUTTI gli header CDN (compreso content-type per audio/video)
+    r.headers.forEach((v, k) => {
+      if (k !== 'content-encoding' && k !== 'transfer-encoding') res.setHeader(k, v);
+    });
+    res.setHeader('Access-Control-Allow-Origin', '*');
     r.body.pipe(res);
   } catch (e) {
     console.error('[hls seg]', req.params.prov, e.message);
@@ -644,6 +580,37 @@ app.post('/api/test', async (req, res) => {
   res.json({ rd: rdResult, tb: tbResult });
 });
 
+// === API PROFILI ===
+// Ogni profilo ha: nome, config (TB/RD + impostazioni), e un ID breve di 10 char.
+// La config viene cifrata nel DB con chiave server-side (AES-256-GCM).
+
+
+// POST /api/encode — Prende un oggetto config, crea una sessione server-side,
+// e ritorna il session ID. Il manifest URL sarà HOST/SESSION_ID/manifest.json.
+app.post('/api/encode', (req, res) => {
+  try {
+    const config = req.body || {};
+    const sessionId = session.createSession(config);
+    res.json({ encoded: sessionId });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/decode', (req, res) => {
+  try {
+    const { encoded } = req.body || {};
+    if (!encoded) return res.status(400).json({ error: 'encoded required' });
+    const config = decodeConfig(encoded);
+    if (!config) return res.status(400).json({ error: 'decode failed' });
+    res.json(config);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
+
 // === DONAZIONI (Payblis Checkout Mode) ===
 const donations = require('./donations');
 
@@ -725,7 +692,7 @@ function donatePage({ title, color, icon, heading, body, ref }) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${title} · Pezzottio</title>
+  <title>${title} · ItaHub</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
            background: #08080c; color: #e4e4e7; margin: 0; min-height: 100vh;
@@ -750,7 +717,7 @@ function donatePage({ title, color, icon, heading, body, ref }) {
     <h1>${heading}</h1>
     <p>${body}</p>
     ${refLine}
-    <a href="/configure">Torna a Pezzottio</a>
+    <a href="/configure">Torna a ItaHub</a>
   </div>
 </body>
 </html>`;
@@ -766,7 +733,7 @@ async function pingHost(name, url, timeoutMs = 3500) {
   try {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeoutMs);
-    const r = await fetch(url, { method: 'GET', signal: controller.signal, headers: { 'User-Agent': 'Pezzottio/status-probe' } });
+    const r = await fetch(url, { method: 'GET', signal: controller.signal, headers: { 'User-Agent': 'ItaHub/status-probe' } });
     clearTimeout(id);
     // 301/302/307/308 = redirect (server up); 401/403/404/405 = server risponde
     // (è "online", non rifiuto dell'addon)
@@ -791,12 +758,15 @@ app.get('/api/status', async (req, res) => {
     pingHost('AnimeWorld', 'https://www.animeworld.ac/'),
     pingHost('AnimeSaturn', 'https://www.animesaturn.cx/'),
     pingHost('AnimeUnity', 'https://www.animeunity.so/'),
+    pingHost('GuardaHD', 'https://mostraguarda.stream/'),
     // GuardaSerie: la homepage v.vidxgo.co/ è sempre 403 (bloccata) ma
     // l'endpoint /t/{imdb_num} (signed playlist) risponde 200 dagli IP non-bloccati
     // SE VidXgo ha il file. Usiamo /t/1375666 (Inception, presente su VidXgo)
     // come canary del vero funzionamento.
+    pingHost('VidXgo', 'https://v.vidxgo.co/'),
     pingHost('GuardaSerie', 'https://v.vidxgo.co/t/1375666'),
     pingHost('StreamingCommunity', `${SC_UPSTREAM}/`),
+    pingHost('Altadefinizione', 'https://altadefinizionestreaming.com/'),
     // === Aggregator esterni (cache check Torbox/RD) ===
     pingHost('Torrentio', 'https://torrentio.strem.fun/manifest.json'),
     pingHost('MediaFusion', 'https://mediafusionfortheweebs.midnightignite.me/'),
@@ -810,22 +780,26 @@ app.get('/api/status', async (req, res) => {
     pingHost('Solid', `https://${SOLID_HOST}/`),
     pingHost('Nyaa', 'https://nyaa.si/'),
     pingHost('TokyoTosho', 'https://www.tokyotosho.info/'),
-    // Hostname caricato da env (no hardcoded nel repo). Se ICV_HOST non è
-    // settato, mostra comunque la riga ma con stato "env mancante" rosso —
-    // così l'admin del server vede subito che deve configurarlo.
+    // Hostname del DB IlCorsaroViola (ICV_HOST env). Impostalo a
+    // https://icvdb.stremio-italia.eu per attivare la ricerca torrent ICV.
+    // Se ICV_HOST + ICV_PASSWORD sono settati, search.js li usa per query
+    // imdb-group via API (login + cookie session). Il ping usa /imdb-group/test
+    // per verificare che il DB sia raggiungibile (anche se il login fallisce,
+    // il server risponde comunque con la pagina di login, status 200).
     process.env.ICV_HOST
-      ? pingHost('IlCorsaroViola', process.env.ICV_HOST)
+      ? pingHost('IlCorsaroViola', process.env.ICV_HOST + (process.env.ICV_HOST.endsWith('/') ? '' : '/') + 'imdb-group/test')
       : Promise.resolve({ name: 'IlCorsaroViola', ok: false, status: 0, ms: 0, error: 'ICV_HOST env mancante' }),
   ]);
-  // Override GuardaSerie: rispetta vidxgo.isDown() (cooldown post-403 in findStream).
-  // Il check /t/603 sopra è il primary indicator del funzionamento reale.
-  const gs = probes.find((p) => p.name === 'GuardaSerie');
-  if (gs && vidxgo.isDown()) {
-    gs.ok = false;
-    gs.error = 'ip_range blocked upstream';
-  }
+  // Nota: cooldown GS rimosso — ora ignora 403 come VX, non blocca tutto per 1h.
+  const warpAvailable = await isProxyAvailable();
   const result = {
     timestamp: Date.now(),
+    proxy: {
+      warpEnabled: !!process.env.WARP_ENABLED && process.env.WARP_ENABLED !== 'false',
+      warpAvailable,
+      proxyUrl: process.env.WARP_ENABLED ? (process.env.WARP_PROXY || 'socks5://127.0.0.1:1080') : null,
+      excludedHosts: process.env.WARP_EXCLUDED_HOSTS || '',
+    },
     providers: probes,
     summary: {
       total: probes.length,
@@ -945,10 +919,41 @@ app.get('/debug/sc', async (req, res) => {
       timeout: 8000,
     });
     const body = await r.text();
-    out.steps.push({ step: 'api', url: apiUrl, status: r.status, ms: Date.now() - t0, body: body.slice(0, 300) });
-    if (r.ok) {
+    out.steps.push({ step: 'api (direct)', url: apiUrl, status: r.status, ms: Date.now() - t0, body: body.slice(0, 300) });
+
+    // Prova anche via proxy (WARP)
+    const t0w = Date.now();
+    const rw = await proxyFetch(apiUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
+        'Referer': `${SC_UPSTREAM}/`,
+        'Accept': 'application/json,*/*',
+      },
+      timeout: 8000,
+    });
+    const bodyW = await rw.text();
+    out.steps.push({ step: 'api (warp)', url: apiUrl, status: rw.status, ms: Date.now() - t0w, body: bodyW.slice(0, 300) });
+
+    // Prova la pagina movie
+    const pageUrl = isMovie ? `${SC_UPSTREAM}/movie/${tmdb}` : `${SC_UPSTREAM}/tv/${tmdb}/${s}/${e}`;
+    const t0p = Date.now();
+    const rp = await fetch(pageUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
+        'Referer': `${SC_UPSTREAM}/`,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+      timeout: 8000,
+    });
+    const bodyP = await rp.text();
+    out.steps.push({ step: 'page', url: pageUrl, status: rp.status, ms: Date.now() - t0p, body: bodyP.slice(0, 300) });
+
+    // Se qualcuno ha funzionato, prova il flusso embed
+    const okResp = [r, rw, rp].find(x => x.ok);
+    if (okResp) {
       try {
-        const j = JSON.parse(body);
+        const txt = await okResp.text();
+        const j = JSON.parse(txt);
         if (j.src) {
           const embedUrl = j.src.startsWith('http') ? j.src : `${SC_UPSTREAM}${j.src}`;
           const t1 = Date.now();
@@ -972,7 +977,7 @@ app.get('/debug/sc', async (req, res) => {
           });
         }
       } catch (parseErr) {
-        out.steps.push({ step: 'api-parse', error: parseErr.message });
+        out.steps.push({ step: 'parse', error: parseErr.message });
       }
     }
   } catch (e) {
@@ -982,7 +987,7 @@ app.get('/debug/sc', async (req, res) => {
 });
 
 // Debug External addons: mostra cosa risponde ogni upstream per uno stream id.
-// Es. https://pezzottio.onrender.com/debug/external?type=series&id=tt0903747:1:1
+// Es. https://itahub.onrender.com/debug/external?type=series&id=tt0903747:1:1
 // Se passi ?rd=<KEY> testa con la chiave RD iniettata negli aggregator.
 app.get('/debug/external', async (req, res) => {
   const type = req.query.type || 'series';
@@ -1002,7 +1007,7 @@ app.get('/debug/external', async (req, res) => {
     try {
       const r = await fetch(url, {
         timeout: 10000,
-        headers: { 'User-Agent': 'Pezzottio/0.1 (Stremio Addon)' },
+        headers: { 'User-Agent': 'ItaHub/0.1 (Stremio Addon)' },
       });
       const ms = Date.now() - t0;
       const body = r.ok ? await r.json() : null;
@@ -1031,17 +1036,16 @@ app.get('/debug/external', async (req, res) => {
 // e riporta http status + numero di risultati. Serve per capire se l'IP
 // Render è bloccato (403) su apibay/solid/bitsearch/knaben.
 // Logo + wordmark: serviti dai PNG in assets/.
-const path = require('path');
 app.get('/logo.png', (req, res) => {
   res.set('Cache-Control', 'public, max-age=86400');
   res.sendFile(path.join(__dirname, '..', 'assets', 'p-logo.png'));
 });
-app.get('/pezzottio-logo.png', (req, res) => {
+app.get('/itahub-logo.png', (req, res) => {
   res.set('Cache-Control', 'public, max-age=86400');
-  res.sendFile(path.join(__dirname, '..', 'assets', 'pezzottio-logo.png'));
+  res.sendFile(path.join(__dirname, '..', 'assets', 'itahub-logo.png'));
 });
 
-// Background addon: SVG con il wordmark PEZZOTTIO embedded come <image>.
+// Background addon: SVG con il wordmark ITAHUB embedded come <image>.
 app.get(['/background.png', '/background.svg'], (req, res) => {
   res.type('image/svg+xml');
   res.set('Cache-Control', 'public, max-age=86400');
@@ -1060,13 +1064,12 @@ app.get(['/background.png', '/background.svg'], (req, res) => {
   </defs>
   <rect width="1920" height="1080" fill="url(#bg)"/>
   <ellipse cx="960" cy="540" rx="900" ry="500" fill="url(#glow)"/>
-  <image href="${base}/pezzottio-logo.png" x="460" y="420" width="1000" preserveAspectRatio="xMidYMid meet"/>
+  <image href="${base}/itahub-logo.png" x="460" y="420" width="1000" preserveAspectRatio="xMidYMid meet"/>
 </svg>`);
 });
 
 // ─── Changelog (user-facing) ──────────────────────────────────────────
 // Caricato da assets/changelog.json. Cache 5 min per evitare disk I/O ripetuto.
-const fs = require('fs');
 let _changelogCache = null;
 let _changelogCacheAt = 0;
 function loadChangelog() {
@@ -1129,12 +1132,12 @@ app.get('/changelog', (req, res) => {
   res.type('html').send(`<!DOCTYPE html>
 <html lang="it"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Changelog · Pezzottio</title>
+<title>Changelog · ItaHub</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>body{background:#000;color:#fff;font-family:-apple-system,system-ui,sans-serif}</style>
 </head><body>
 <div class="max-w-3xl mx-auto px-6 py-12">
-  <a href="/configure" class="text-zinc-500 text-sm hover:text-white inline-flex items-center gap-1">← Torna a Pezzottio</a>
+  <a href="/configure" class="text-zinc-500 text-sm hover:text-white inline-flex items-center gap-1">← Torna a ItaHub</a>
   <h1 class="text-4xl font-extrabold mt-6 mb-2" style="color:#e50914">Changelog</h1>
   <p class="text-zinc-400 text-sm mb-10">Cosa è cambiato di recente. Aggiornato a ogni nuovo deploy.</p>
   ${groups || '<p class="text-zinc-500">Nessuna entry ancora.</p>'}
@@ -1294,7 +1297,7 @@ app.get('/debug/scrapers', async (req, res) => {
 //   - quanti confermati cached da IA
 //   - tempi per ogni step
 // Uso: apri nel browser:
-//   https://pezz8io.dpdns.org/CONFIG_BASE64/debug/rd?id=tt0413573:21:1
+//   https://itahub.navidrome.dpdns.org/CONFIG_BASE64/debug/rd?id=tt0413573:21:1
 // dove CONFIG_BASE64 è il segmento prima di /configure nella tua URL Stremio.
 app.get('/debug/rd', async (req, res) => {
   const id = req.query.id || 'tt0413573:21:1';
@@ -1435,7 +1438,7 @@ app.get('/', (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pezzottio · Choose language / Scegli lingua</title>
+  <title>ItaHub · Choose language / Scegli lingua</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='1.8'%3E%3Crect x='2.5' y='5' width='19' height='13' rx='2.5'/%3E%3Cpath d='M8 21h8M9 18v3M15 18v3' stroke-linecap='round'/%3E%3C/svg%3E">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1455,7 +1458,7 @@ app.get('/', (req, res) => {
 </head>
 <body class="min-h-screen bg-fx flex items-center justify-center px-4">
   <main class="max-w-3xl w-full text-center">
-    <h1 class="brand text-6xl md:text-8xl mb-4">PEZZOTTIO</h1>
+    <h1 class="brand text-6xl md:text-8xl mb-4">ITAHUB</h1>
     <p class="text-zinc-400 text-sm md:text-base mb-12 tracking-wide uppercase">Choose your language · Scegli la lingua</p>
 
     <div class="grid sm:grid-cols-2 gap-4 sm:gap-6 max-w-2xl mx-auto">
@@ -1476,7 +1479,7 @@ app.get('/', (req, res) => {
     </div>
 
     <div class="text-[11px] text-zinc-600 mt-12">
-      100% free · Open source · <a href="https://github.com/ceres777/pezzottio" target="_blank" rel="noopener" class="hover:text-zinc-400 transition">GitHub</a>
+      100% free · Open source · <a href="https://github.com/manuel09/pezz" target="_blank" rel="noopener" class="hover:text-zinc-400 transition">GitHub</a>
     </div>
   </main>
 </body>
@@ -1485,14 +1488,14 @@ app.get('/', (req, res) => {
 
 // === EXTRA CATALOG PROXY (/extra/*) ===
 // Proxy completo verso un addon di metadata esterno preconfigurato.
-// Lo serviamo sotto il nostro dominio con branding "Pezzottio Extra" così
+// Lo serviamo sotto il nostro dominio con branding "ItaHub Extra" così
 // l'utente non vede il nome dell'addon upstream nel dialog Stremio.
 // Solo manifest viene riscritto (id + name); catalog/meta/subtitles sono
 // passthrough con caching aggressivo.
 const EXTRA_UPSTREAM = process.env.EXTRA_CATALOG_UPSTREAM
   || 'https://aiometadata.elfhosted.com/stremio/3bfc4ec0-ef9d-4703-98ca-ab313631d178';
 // Upstream EN: configurazione AIOMetadata separata (lingua/sources orientati EN).
-// Lo serviamo sotto /extra-en/* con rebranding "Pezzottio Extra (English)".
+// Lo serviamo sotto /extra-en/* con rebranding "ItaHub Extra (English)".
 const EXTRA_UPSTREAM_EN = process.env.EXTRA_CATALOG_UPSTREAM_EN
   || 'https://aiometadata.elfhosted.com/stremio/e06851f2-66a3-4cd7-afb9-b80c6a2c9f01';
 
@@ -1516,7 +1519,7 @@ function _createExtraProxy({ upstream, brand }) {
     try {
       const r = await fetch(`${upstream}${subpath}`, {
         timeout: 8000,
-        headers: { 'Accept': 'application/json', 'User-Agent': 'Pezzottio-Proxy/1.0' },
+        headers: { 'Accept': 'application/json', 'User-Agent': 'ItaHub-Proxy/1.0' },
       });
       const body = await r.text();
       const entry = { body, status: r.status, t: Date.now() };
@@ -1563,9 +1566,9 @@ function _createExtraProxy({ upstream, brand }) {
 app.get(/^\/extra(\/.*)?$/, _createExtraProxy({
   upstream: EXTRA_UPSTREAM,
   brand: {
-    id: 'org.pezzottio.extracatalogs',
-    name: 'Pezzottio Extra',
-    description: 'Catalog Netflix, Prime Video, Disney+, HBO Max, Apple TV+, Crunchyroll integrato in Pezzottio.',
+    id: 'org.itahub.extracatalogs',
+    name: 'ItaHub Extra',
+    description: 'Catalog Netflix, Prime Video, Disney+, HBO Max, Apple TV+, Crunchyroll integrato in ItaHub.',
   },
 }));
 
@@ -1573,24 +1576,68 @@ app.get(/^\/extra(\/.*)?$/, _createExtraProxy({
 app.get(/^\/extra-en(\/.*)?$/, _createExtraProxy({
   upstream: EXTRA_UPSTREAM_EN,
   brand: {
-    id: 'org.pezzottio.extracatalogs.en',
-    name: 'Pezzottio Extra (English)',
-    description: 'Netflix, Prime Video, Disney+, HBO Max, Apple TV+, Crunchyroll catalog — English edition integrated in Pezzottio.',
+    id: 'org.itahub.extracatalogs.en',
+    name: 'ItaHub Extra (English)',
+    description: 'Netflix, Prime Video, Disney+, HBO Max, Apple TV+, Crunchyroll catalog — English edition integrated in ItaHub.',
   },
 }));
 
-// Manifest dinamico: rimuove i cataloghi Pezzottio Anime se l'utente ha
-// disabilitato l'anime nella sua config (httpAnime=false). Catalogo e stream
-// HTTP anime vanno insieme — se uno è off, l'altro pure. Questo middleware
+// /proxy/adn/* → byte-range proxy CDN Altadefinizione via WARP.
+app.get('/proxy/adn/:tmdbId/:season/:episode/master.mp4', async (req, res) => {
+  const { tmdbId, season, episode } = req.params;
+  const isMovie = season === 'movie' || episode === 'movie';
+  try {
+    const cdn = await altadefinizione.getCdnUrlCached(
+      tmdbId,
+      isMovie ? null : Number(season),
+      isMovie ? null : Number(episode),
+      isMovie
+    );
+    if (!cdn || !cdn.url) {
+      console.error('[proxy/adn] no cdn source for', tmdbId, season, episode, isMovie);
+      return res.status(502).send('adn: no cdn source');
+    }
+    console.log('[proxy/adn] CDN url:', cdn.url?.slice(0, 120));
+    const range = req.headers.range || '';
+    const upstream = await proxyFetch(cdn.url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+        'Referer': 'https://altadefinizionestreaming.com/',
+        ...(range ? { Range: range } : {}),
+      },
+      redirect: 'follow',
+    });
+    if (!upstream.ok) {
+      console.error('[proxy/adn] CDN upstream:', upstream.status, 'for url:', cdn.url?.slice(0, 100));
+      return res.status(upstream.status).send('cdn upstream error');
+    }
+    const ct = upstream.headers.get('content-type') || 'video/mp4';
+    console.log('[proxy/adn] upstream status:', upstream.status, 'ct:', ct, 'size:', upstream.headers.get('content-length') || '?');
+    res.status(upstream.status);
+    res.setHeader('Content-Type', ct);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Accept-Ranges', 'bytes');
+    for (const h of ['content-length', 'content-range', 'cache-control']) {
+      const v = upstream.headers.get(h);
+      if (v) res.setHeader(h, v);
+    }
+    upstream.body.pipe(res);
+  } catch (e) {
+    console.error('[proxy/adn]', e.message);
+    res.status(502).send('adn proxy error');
+  }
+});
+
+// Manifest dinamico: rimuove i cataloghi ItaHub Anime se l'utente ha
+// disabilitato animeCatalog. Questo middleware
 // deve girare PRIMA del SDK router (che serve il manifest statico).
 app.get(/^\/manifest\.json$/, (req, res, next) => serveManifest(req, res, next));
 function serveManifest(req, res) {
   try {
-    const animeOff = req.userConfig?.httpAnime === false || req.userConfig?.httpAnime === 'false';
-    // Clone shallow del manifest. Filtra catalogs se anime off.
+    const catalogOff = req.userConfig?.animeCatalog === false || req.userConfig?.animeCatalog === 'false';
     const m = { ...addonInterface.manifest };
-    if (animeOff && Array.isArray(m.catalogs)) {
-      m.catalogs = m.catalogs.filter((c) => !c.id.startsWith('pezzottio-anime-'));
+    if (catalogOff && Array.isArray(m.catalogs)) {
+      m.catalogs = m.catalogs.filter((c) => !c.id.startsWith('itahub-anime-'));
     }
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Cache-Control', 'max-age=300, public');
@@ -1608,7 +1655,11 @@ app.use((req, res, next) => {
 });
 
 const c = getConfig();
-app.listen(c.port, c.host, () => {
-  console.log(`Pezzottio listening on http://${c.host}:${c.port}`);
+app.listen(c.port, c.host, async () => {
+  console.log(`ItaHub listening on http://${c.host}:${c.port}`);
   console.log(`Configure: http://${c.host}:${c.port}/configure`);
+  // Auto-start wireproxy (WARP tunnel) in background se WARP_CONFIG != 'off'
+  if (process.env.WARP_CONFIG !== 'off' && process.env.WARP_CONFIG !== 'false') {
+    wireproxy.start().catch((e) => console.error('[warp] startup error:', e.message));
+  }
 });
