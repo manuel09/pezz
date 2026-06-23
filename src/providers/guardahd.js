@@ -9,7 +9,7 @@
 //   4. Per supervideo: unpack packed JS → estrae M3U8
 //   5. Ritorna URL master playlist con proxyHeaders
 
-const fetch = require('node-fetch');
+const { fetch } = require('../proxy');
 
 const MG_DOMAIN = 'https://mostraguarda.stream';
 
