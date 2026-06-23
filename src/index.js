@@ -1582,7 +1582,7 @@ app.get(/^\/extra-en(\/.*)?$/, _createExtraProxy({
   },
 }));
 
-// /proxy/adn/* → byte-range proxy CDN Altadefinizione via WARP.
+// /proxy/adn/* → byte-range proxy CDN Altadefinizione via CF Worker (ipsig match).
 app.get('/proxy/adn/:tmdbId/:season/:episode/master.mp4', async (req, res) => {
   const { tmdbId, season, episode } = req.params;
   const isMovie = season === 'movie' || episode === 'movie';
@@ -1598,8 +1598,11 @@ app.get('/proxy/adn/:tmdbId/:season/:episode/master.mp4', async (req, res) => {
       return res.status(502).send('adn: no cdn source');
     }
     console.log('[proxy/adn] CDN url:', cdn.url?.slice(0, 120));
+    // Proxy CDN through same worker (ipsig match con API call)
+    const encodedCdn = Buffer.from(cdn.url).toString('base64url');
+    const workerCdnUrl = `https://holy-base-de5f.manu-17.workers.dev/adn/cdn/${encodedCdn}`;
     const range = req.headers.range || '';
-    const upstream = await proxyFetch(cdn.url, {
+    const upstream = await require('node-fetch')(workerCdnUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0',
         'Referer': 'https://altadefinizionestreaming.com/',

@@ -1,6 +1,7 @@
 // Cloudflare Worker — reverse proxy per CinemaCity + Altadefinizione
 // CinemaCity: proxy trasparente /path → https://cinemacity.cc/path
-// ADN: /adn/api/:tmdbId/:type/:season?/:episode? → ADN API
+// ADN API: /adn/api/:tmdbId/:type/:season?/:episode? → ADN API
+// ADN CDN: /adn/cdn/* → proxy CDN (stesso IP dell'API = ipsig match)
 
 const CC_UPSTREAM = 'https://cinemacity.cc';
 const ADN_BASE = 'https://altadefinizionestreaming.com';
@@ -8,11 +9,10 @@ const UA = 'Mozilla/5.0';
 
 async function handleAdnApi(url) {
   const pathParts = url.pathname.slice(1).split('/');
-  // /adn/api/:tmdbId/:type(/:season?/:episode?)
   if (pathParts.length < 3 || pathParts[0] !== 'adn' || pathParts[1] !== 'api') return null;
   
   const tmdbId = pathParts[2];
-  const type = pathParts[3]; // 'movie' or 'tv'
+  const type = pathParts[3];
   const season = pathParts[4];
   const episode = pathParts[5];
   const isMovie = type === 'movie' || !season;
@@ -33,11 +33,33 @@ async function handleAdnApi(url) {
   });
   
   const data = await resp.text();
-  const respHeaders = new Headers();
-  respHeaders.set('Content-Type', 'application/json');
-  respHeaders.set('Access-Control-Allow-Origin', '*');
+  return new Response(data, {
+    status: resp.status,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  });
+}
+
+async function handleAdnCdn(url, request) {
+  // /adn/cdn/<base64url-encoded-cdn-url>
+  const encoded = url.pathname.slice('/adn/cdn/'.length);
+  const cdnUrl = decodeURIComponent(escape(atob(encoded.replace(/-/g, '+').replace(/_/g, '/'))));
+  if (!cdnUrl || !cdnUrl.startsWith('https://')) return null;
   
-  return new Response(data, { status: resp.status, headers: respHeaders });
+  const range = request.headers.get('Range') || '';
+  const resp = await fetch(cdnUrl, {
+    headers: {
+      'User-Agent': UA,
+      'Referer': ADN_BASE + '/',
+      ...(range ? { Range: range } : {}),
+    },
+    redirect: 'follow',
+  });
+  
+  const respHeaders = new Headers(resp.headers);
+  respHeaders.set('Access-Control-Allow-Origin', '*');
+  respHeaders.delete('Set-Cookie');
+  
+  return new Response(resp.body, { status: resp.status, headers: respHeaders });
 }
 
 export default {
@@ -45,9 +67,12 @@ export default {
     const url = new URL(request.url);
     const workerHost = url.host;
     
-    // ADN API proxy
     if (url.pathname.startsWith('/adn/api/')) {
       return handleAdnApi(url) || new Response('adn api error', { status: 502 });
+    }
+    
+    if (url.pathname.startsWith('/adn/cdn/')) {
+      return handleAdnCdn(url, request) || new Response('adn cdn error', { status: 502 });
     }
     
     // CinemaCity proxy
