@@ -18,6 +18,9 @@
     "express-session": "^1.19.0",
     "https-proxy-agent": "^7.0.6",
     "node-fetch": "^2.7.0",
+    "playwright": "^1.61.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "socks-proxy-agent": "^10.0.0",
     "stremio-addon-sdk": "^1.6.10"
   }

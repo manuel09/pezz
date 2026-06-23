@@ -1,74 +1,87 @@
-const { chromium } = require('playwright');
+const { chromium } = require('playwright-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+
+chromium.use(StealthPlugin());
 
 const WARP_PROXY = process.env.WARP_PROXY || 'socks5://127.0.0.1:1080';
-const PROBE_URL = 'https://vixsrc.to/api/movie/27205';
-const REFRESH_INTERVAL = 20 * 60 * 1000;
+const REFRESH_INTERVAL = 20 * 60 * 1000; // 20 min — CF clearance typically lasts 30 min
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 
 let browser = null;
 let context = null;
-let cookieJar = null;
-let lastRefresh = 0;
+const cookieJars = new Map(); // domain → { cookies: {}, lastRefresh: ts }
 
 async function getBrowser() {
   if (browser && browser.isConnected()) return browser;
   browser = await chromium.launch({
     headless: true,
     args: [
-      `--proxy-server=${WARP_PROXY}`,
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
+      '--disable-gpu',
     ],
   });
   return browser;
 }
 
-async function solveOnce() {
+function extractCfCookies(raw, domain) {
+  const cf = {};
+  for (const c of raw) {
+    if (c.domain && !c.domain.includes(domain.replace(/^www\./, ''))) continue;
+    cf[c.name] = c.value;
+  }
+  return cf;
+}
+
+async function solveOnce(url, domain) {
   const b = await getBrowser();
   if (context) await context.close();
   context = await b.newContext({ userAgent: UA });
   const page = await context.newPage();
   try {
-    await page.goto(PROBE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 40000 });
+    // Wait for CF challenge to resolve — stealth plugin helps here
     try {
       await page.waitForFunction(
-        () => document.title !== 'Just a moment...',
-        { timeout: 30000 }
+        () => {
+          const title = document.title;
+          return title !== 'Just a moment...' && title !== 'Ci siamo quasi…' && title !== 'Verifying...' && title !== '';
+        },
+        { timeout: 35000 }
       );
     } catch {
-      // Se il timeout scade, controlliamo se siamo comunque passati
-      const title = await page.title();
-      const body = await page.evaluate(() => document.body?.innerText?.slice(0, 200) || '');
-      if (title === 'Just a moment...' && !body.includes('src') && !body.includes('{')) {
-        throw new Error('cf-solver: challenge not resolved');
+      // Challenge might have resolved but title stayed the same
+      const bodyLen = await page.evaluate(() => document.body.innerText.length);
+      if (bodyLen < 500) {
+        throw new Error('cf-solver: challenge not resolved for ' + url);
       }
     }
     const raw = await context.cookies();
-    const cf = {};
-    for (const c of raw) {
-      if (c.name.startsWith('__cf') || c.name === 'cf_clearance') {
-        cf[c.name] = c.value;
-      }
-    }
-    // Includiamo anche tutti i cookie perché alcuni servizi ne usano altri
-    for (const c of raw) {
-      cf[c.name] = c.value;
-    }
-    cookieJar = cf;
-    lastRefresh = Date.now();
-    console.log('[cf-solver] cookies refreshed:', Object.keys(cookieJar).join(', '));
-    return cookieJar;
+    const cookies = extractCfCookies(raw, domain);
+    cookieJars.set(domain, { cookies, lastRefresh: Date.now() });
+    console.log('[cf-solver] cookies refreshed for', domain, ':', Object.keys(cookies).join(', '));
+    return cookies;
   } finally {
     await page.close();
   }
 }
 
-async function getCookies(force) {
-  if (force || !cookieJar || Date.now() - lastRefresh > REFRESH_INTERVAL) {
-    await solveOnce();
+async function getCookies(url, force) {
+  let domain;
+  try { domain = new URL(url).hostname.replace(/^www\./, ''); } catch { return {}; }
+
+  const jar = cookieJars.get(domain);
+  if (!force && jar && Date.now() - jar.lastRefresh < REFRESH_INTERVAL) {
+    return jar.cookies || {};
   }
-  return cookieJar || {};
+  try {
+    const homeUrl = `https://${domain}/`;
+    return await solveOnce(homeUrl, domain);
+  } catch (e) {
+    console.error('[cf-solver] failed for', domain, ':', e.message);
+    return jar ? jar.cookies : {};
+  }
 }
 
 function getCookieHeader(jar) {
@@ -81,12 +94,11 @@ async function closeBrowser() {
   }
   browser = null;
   context = null;
-  cookieJar = null;
-  lastRefresh = 0;
+  cookieJars.clear();
 }
 
-async function warmup() {
-  await getCookies(false);
+async function warmup(url) {
+  await getCookies(url, false);
 }
 
 module.exports = { getCookies, getCookieHeader, solveOnce, closeBrowser, warmup };

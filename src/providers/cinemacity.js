@@ -1,7 +1,6 @@
 // CinemaCity provider.
-// Port from StreamVix (qwertyuiop8899/streamvix) direct mode.
-// Fetches cinemacity.cc via Cloudflare Worker, finds the title by sitemap
-// matching, extracts direct HLS/CDN URL from the page.
+// Fetches cinemacity.cc via Cloudflare Worker proxy (cc.realbestia.com).
+// Finds the title by sitemap matching, extracts direct HLS/CDN URL from the page.
 
 const fetch = require('node-fetch');
 
@@ -12,7 +11,7 @@ const SITEMAP_TTL_MS = 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 10000;
 
 const UA = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36';
-const WORKER_HOST = Buffer.from('Y2MubGVhbmhodTA2MTIwNi53b3JrZXJzLmRldg==', 'base64').toString('utf-8');
+const WORKER_HOST = 'holy-base-de5f.manu-17.workers.dev';
 
 const PLAYBACK_HEADERS = {
   'User-Agent': UA,
