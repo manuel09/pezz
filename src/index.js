@@ -1662,4 +1662,7 @@ app.listen(c.port, c.host, async () => {
   if (process.env.WARP_CONFIG !== 'off' && process.env.WARP_CONFIG !== 'false') {
     wireproxy.start().catch((e) => console.error('[warp] startup error:', e.message));
   }
+  // Pre-warm CinemaCity sitemap cache in background
+  const cinemacity = require('./providers/cinemacity');
+  cinemacity.warmup().catch((e) => console.error('[cinemacity] warmup error:', e.message));
 });
