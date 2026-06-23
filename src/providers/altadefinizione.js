@@ -1,12 +1,13 @@
 // Altadefinizione provider.
-// API diretta: https://altadefinizionestreaming.com/api/player-sources/{movie|tv}/{tmdbId}[/{s}/{e}]
-// Ritorna CDN MP4 con IP binding (ipsig). Proxy fetch via WARP per ADN.
+// API via Cloudflare Worker per bypassare blocchi IP.
+// Worker: /adn/api/:tmdbId/:type[/:season/:episode] → ADN API
 
-const { fetch } = require('../proxy');
+const { proxyFetch, WARP_ENABLED } = require('../proxy');
+const fetch = require('node-fetch');
 
 const TMDB_API = 'https://api.themoviedb.org/3';
 const TMDB_KEY = process.env.TMDB_API_KEY || '4ef0d7355d9ffb5151e987764708ce96';
-const ADN_BASE = 'https://altadefinizionestreaming.com';
+const WORKER_HOST = 'holy-base-de5f.manu-17.workers.dev';
 
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 
@@ -14,21 +15,17 @@ function getCookie() {
   return process.env.ALTADEFINIZIONE_COOKIE || 'sid=32234dfabd14e587764e84405e75e99856c6bef31c6b1752e19897b8ae3d4a21';
 }
 
-const COMMON_HEADERS = {
-  'User-Agent': UA,
-  'Accept': 'application/json,text/plain,*/*',
-  'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8',
-  'Referer': `${ADN_BASE}/`,
-};
+const ADN_BASE = 'https://altadefinizionestreaming.com';
 
-async function fetchAdnApi(url) {
-  const headers = { ...COMMON_HEADERS };
-  const cookie = getCookie();
-  if (cookie) headers['Cookie'] = cookie;
-  const res = await fetch(url, { headers, timeout: 10000 }).catch(e => { console.error('[ADN] error:', e.message); return null; });
-  if (!res || !res.ok) { console.error('[ADN] status:', res?.status); return null; }
+async function fetchAdnApiWorker(tmdbId, season, episode, isMovie) {
+  let path = `/adn/api/${tmdbId}/${isMovie ? 'movie' : 'tv'}`;
+  if (!isMovie) path += `/${season}/${episode}`;
+  const url = `https://${WORKER_HOST}${path}`;
+  
+  const res = await fetch(url, { timeout: 15000 }).catch(e => { console.error('[ADN] worker error:', e.message); return null; });
+  if (!res || !res.ok) { console.error('[ADN] worker status:', res?.status); return null; }
   const data = await res.json().catch(() => null);
-  if (!data || data.unavailable) { console.error('[ADN] unavailable:', data?.unavailable); return null; }
+  if (!data || data.unavailable) { console.error('[ADN] unavailable'); return null; }
   return data;
 }
 
@@ -50,13 +47,9 @@ async function imdbToTmdb(imdbId, kind) {
 }
 
 async function getCdnUrl(tmdbId, season, episode, isMovie) {
-  const path = isMovie
-    ? `/api/player-sources/movie/${encodeURIComponent(tmdbId)}`
-    : `/api/player-sources/tv/${encodeURIComponent(tmdbId)}/${season}/${episode}`;
-  const data = await fetchAdnApi(`${ADN_BASE}${path}`);
+  const data = await fetchAdnApiWorker(tmdbId, season, episode, isMovie);
   if (!data) return null;
-  console.log('[ADN] sources count:', data.sources?.length, 'unavailable:', data.unavailable);
-  if (data.sources?.length) console.log('[ADN] sources[0]:', JSON.stringify(data.sources[0]).slice(0, 200));
+  console.log('[ADN] sources count:', data.sources?.length);
   const cdnSource = (data.sources || []).find((s) => s.provider === 'cdn');
   if (!cdnSource || !cdnSource.url) {
     console.error('[ADN] no cdn source, providers:', data.sources?.map(s => s.provider).join(','));
@@ -90,7 +83,6 @@ async function findStream(imdbId, season, episode, isMovie) {
   }
 }
 
-// Per il proxy MP4: rifare la chiamata ADN API per avere URL CDN fresco
 async function getCdnUrlCached(tmdbId, season, episode, isMovie) {
   return getCdnUrl(tmdbId, season, episode, isMovie);
 }
