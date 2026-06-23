@@ -243,10 +243,10 @@ function buildDownloadUrl(fileVal) {
   const rest = fileVal.substring(idx + '/public_files/'.length);
   const parts = rest.split(',');
   const video = parts.find(p => p.includes('1080p') && p.endsWith('.mp4')) || parts.find(p => p.endsWith('.mp4'));
+  if (!video) return null;
   const itaAudio = parts.find(p => /italian|italiano/i.test(p) && p.endsWith('.m4a'));
-  if (!itaAudio || !video) return null;
   const m3u8Entry = parts.find(p => p.includes('.m3u8'));
-  return cdnBase + rest + (m3u8Entry ? '' : '.urlset/master.m3u8');
+  return { url: cdnBase + rest + (m3u8Entry ? '' : '.urlset/master.m3u8'), isItalian: !!itaAudio };
 }
 
 function extractStreamFromAtob(html, season, episode) {
@@ -266,11 +266,15 @@ function extractStreamFromAtob(html, season, episode) {
         const s = parsed[sIdx];
         const eIdx = Math.max(0, (episode || 1) - 1);
         const ep = s && s.folder && s.folder[eIdx];
-        if (ep && ep.file) return buildDownloadUrl(ep.file) || ep.file;
+        if (ep && ep.file) {
+          const result = buildDownloadUrl(ep.file);
+          return result ? result.url : ep.file;
+        }
       }
       const fileVal = parsed[0] && parsed[0].file;
       if (typeof fileVal === 'string' && fileVal.startsWith('http')) {
-        return buildDownloadUrl(fileVal) || fileVal;
+        const result = buildDownloadUrl(fileVal);
+        return result ? result.url : fileVal;
       }
     } catch { /* keep scanning */ }
   }

@@ -1,38 +1,42 @@
 // Cloudflare Worker — CinemaCity reverse proxy
-// Trasparente: ogni richiesta a questo worker viene inoltrata a cinemacity.cc
-// con lo stesso path + query string.
+// Rewrites cinemacity.cc → this worker's domain, then proxies all requests.
+// This allows the page to load correctly with all resources flowing through us.
 //
-// Esempio: GET /news_pages.xml → https://cinemacity.cc/news_pages.xml
-//          GET /movies/123-title.html → https://cinemacity.cc/movies/123-title.html
-//
-// Posa su Cloudflare Workers e aggiorna WORKER_HOST in cinemacity.js.
+// URL rewriting is critical: the page HTML contains absolute URLs to
+// cinemacity.cc which would be blocked by CF if loaded directly.
 
 const UPSTREAM = 'https://cinemacity.cc';
-
 const UA = 'Mozilla/5.0';
+
+async function fetchUpstream(url, request) {
+  const headers = new Headers();
+  headers.set('User-Agent', request.headers.get('User-Agent') || UA);
+  const accept = request.headers.get('Accept');
+  if (accept) headers.set('Accept', accept);
+  const acceptLang = request.headers.get('Accept-Language');
+  if (acceptLang) headers.set('Accept-Language', acceptLang);
+  const referer = request.headers.get('Referer');
+  if (referer) headers.set('Referer', referer);
+
+  return fetch(url, {
+    method: request.method,
+    headers,
+    redirect: 'follow',
+  });
+}
 
 export default {
   async fetch(request) {
     const url = new URL(request.url);
+    const workerHost = url.host;
     const targetUrl = UPSTREAM + url.pathname + url.search;
 
-    const headers = new Headers();
-    headers.set('User-Agent', request.headers.get('User-Agent') || UA);
-    headers.set('Accept', request.headers.get('Accept') || 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
-    headers.set('Accept-Language', request.headers.get('Accept-Language') || 'it-IT,it;q=0.9,en;q=0.8');
-
-    const referer = request.headers.get('Referer');
-    if (referer) headers.set('Referer', referer);
-    else headers.set('Referer', UPSTREAM + '/');
-
     try {
-      const upstream = await fetch(targetUrl, {
-        method: request.method,
-        headers,
-        redirect: 'follow',
-      });
+      const upstream = await fetchUpstream(targetUrl, request);
+      const contentType = upstream.headers.get('Content-Type') || '';
 
-      const respHeaders = new Headers(upstream.headers);
+      let body = upstream.body;
+      let respHeaders = new Headers(upstream.headers);
       respHeaders.set('Access-Control-Allow-Origin', '*');
       respHeaders.delete('Set-Cookie');
       respHeaders.delete('CF-Ray');
@@ -40,7 +44,25 @@ export default {
       respHeaders.delete('Report-To');
       respHeaders.delete('NEL');
 
-      return new Response(upstream.body, {
+      // Rewrite HTML: replace cinemacity.cc with our worker host
+      if (contentType.includes('text/html') || contentType.includes('application/xhtml')) {
+        let html = await upstream.text();
+        html = html.replace(/https?:\/\/cinemacity\.cc/g, 'https://' + workerHost);
+        html = html.replace(/cinemacity\.cc/g, workerHost);
+        // Also rewrite protocol-relative URLs
+        html = html.replace(/"\/\//g, '"https://');
+        
+        respHeaders.delete('Content-Length');
+        respHeaders.delete('Content-Encoding');
+        respHeaders.delete('Transfer-Encoding');
+        
+        return new Response(html, {
+          status: upstream.status,
+          headers: respHeaders,
+        });
+      }
+
+      return new Response(body, {
         status: upstream.status,
         headers: respHeaders,
       });
