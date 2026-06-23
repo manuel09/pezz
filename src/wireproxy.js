@@ -96,13 +96,14 @@ async function getOrCreateRegistration(forceNew) {
 
 function generateConfig(reg) {
   const v4 = reg.config.interface.addresses.v4;
+  const v6 = reg.config.interface.addresses.v6;
   const lines = [
     '[Socks5]',
     'BindAddress = 127.0.0.1:1080',
     '',
     '[Interface]',
     `PrivateKey = ${reg.privateKey}`,
-    `Address = ${v4}/32`,
+    `Address = ${v4}/32, ${v6}/128`,
     'DNS = 1.1.1.1',
     '',
     '[Peer]',
@@ -159,9 +160,15 @@ let _child = null;
 
 async function testAdnViaSocks() {
   try {
+    const cookie = process.env.ALTADEFINIZIONE_COOKIE || 'sid=32234dfabd14e587764e84405e75e99856c6bef31c6b1752e19897b8ae3d4a21';
     const agent = new SocksProxyAgent('socks5://127.0.0.1:1080');
     const r = await fetch('https://altadefinizionestreaming.com/api/player-sources/movie/27205', {
-      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json', 'Referer': 'https://altadefinizionestreaming.com/' },
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+        'Accept': 'application/json',
+        'Referer': 'https://altadefinizionestreaming.com/',
+        'Cookie': cookie,
+      },
       agent,
       timeout: 8000,
     });
