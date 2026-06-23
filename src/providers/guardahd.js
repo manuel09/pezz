@@ -52,28 +52,6 @@ function unPack(p, a, c, k, e, d) {
   return p;
 }
 
-// Proxy agent
-let socksAgent;
-function getSocksAgent() {
-  if (socksAgent) return socksAgent;
-  try {
-    const SocksProxyAgent = require('socks-proxy-agent').SocksProxyAgent;
-    socksAgent = new SocksProxyAgent('socks5://127.0.0.1:1080');
-  } catch { socksAgent = null; }
-  return socksAgent;
-}
-
-async function fetchViaSocks(url, headers) {
-  const agent = getSocksAgent();
-  if (!agent) { log('WARP SOCKS5 agent not available'); return null; }
-  try {
-    const r = await fetch(url, { agent, headers, timeout: 10000 });
-    if (!r.ok) return null;
-    const text = await r.text();
-    return text;
-  } catch { return null; }
-}
-
 // Estrae TUTTI i data-link da mostraguarda per un imdbId
 const scrapeCache = new Map();
 function log(...args) { try { console.log('[GH]', ...args); } catch {} }
@@ -125,37 +103,34 @@ async function extractVixCloud(embedUrl) {
 // Estrae M3U8 da supervideo embed via packed JS unpack
 async function extractSuperVideo(embedUrl) {
   const id = embedUrl.split('/').pop();
-  const targetUrl = `https://supervideo.tv/e/${id}`;
-  log('extractSuperVideo', targetUrl);
+  // Prova prima l'URL originale (.cc), fallback a .tv
+  const urls = [embedUrl, `https://supervideo.tv/e/${id}`];
+  if (embedUrl.includes('supervideo.tv')) urls.reverse();
 
   let html = null;
 
-  // Prova fetch diretta
-  try {
-    const r = await fetch(targetUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-        'Referer': 'https://supervideo.tv/',
-      },
-      timeout: 8000,
-    });
-    log('supervideo direct status:', r.status);
-    if (r.ok) {
-      const text = await r.text();
-      if (text.includes('eval(function(p,a,c,k,e,d)')) { html = text; log('supervideo direct OK with packed JS'); }
-      else log('supervideo direct OK but no packed JS, len:', text.length, 'has CF:', text.includes('Just a moment'));
-    }
-  } catch (e) { log('supervideo direct error:', e.message); }
-
-  // Se bloccato (403/CF), prova via WARP SOCKS5
-  if (!html) {
-    log('trying supervideo via WARP SOCKS5...');
-    html = await fetchViaSocks(targetUrl, {
-      'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-      'Referer': 'https://supervideo.tv/',
-    });
-    if (html) log('supervideo WARP OK, len:', html.length, 'has packed:', html.includes('eval(function(p,a,c,k,e,d)'));
-    else log('supervideo WARP failed');
+  for (const targetUrl of urls) {
+    log('extractSuperVideo trying', targetUrl);
+    try {
+      const domain = new URL(targetUrl).hostname;
+      const r = await fetch(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+          'Referer': `https://${domain}/`,
+        },
+        timeout: 8000,
+      });
+      log('supervideo status:', r.status);
+      if (r.ok) {
+        const text = await r.text();
+        if (text.includes('eval(function(p,a,c,k,e,d)')) {
+          html = text;
+          log('supervideo OK with packed JS from', targetUrl);
+          break;
+        }
+        log('supervideo OK but no packed JS, len:', text.length, 'has CF:', text.includes('Just a moment'));
+      }
+    } catch (e) { log('supervideo error:', e.message); }
   }
 
   if (!html) return null;
