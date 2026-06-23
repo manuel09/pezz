@@ -10,6 +10,10 @@ const ADN_BASE = 'https://altadefinizionestreaming.com';
 
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 
+function getCookie() {
+  return process.env.ALTADEFINIZIONE_COOKIE || 'sid=32234dfabd14e587764e84405e75e99856c6bef31c6b1752e19897b8ae3d4a21';
+}
+
 const COMMON_HEADERS = {
   'User-Agent': UA,
   'Accept': 'application/json,text/plain,*/*',
@@ -18,7 +22,10 @@ const COMMON_HEADERS = {
 };
 
 async function fetchAdnApi(url) {
-  const res = await fetch(url, { headers: COMMON_HEADERS, timeout: 10000 }).catch(e => { console.error('[ADN] error:', e.message); return null; });
+  const headers = { ...COMMON_HEADERS };
+  const cookie = getCookie();
+  if (cookie) headers['Cookie'] = cookie;
+  const res = await fetch(url, { headers, timeout: 10000 }).catch(e => { console.error('[ADN] error:', e.message); return null; });
   if (!res || !res.ok) { console.error('[ADN] status:', res?.status); return null; }
   const data = await res.json().catch(() => null);
   if (!data || data.unavailable) { console.error('[ADN] unavailable:', data?.unavailable); return null; }
