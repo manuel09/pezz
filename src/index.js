@@ -361,13 +361,15 @@ hlsRouter.get('/:prov/:id/:season/:episode/seg/:segName', async (req, res) => {
     }
     if (!r || !r.ok) return res.status(r ? r.status : 502).end();
 
+    // Buffer del segmento prima di inviare: evita blocchi su client sensibili
+    // alla latenza (Nuvio) che si fermano se i dati arrivano troppo piano.
+    const segBuf = await r.buffer();
     res.status(r.status);
-    // Passa TUTTI gli header CDN (compreso content-type per audio/video)
-    r.headers.forEach((v, k) => {
-      if (k !== 'content-encoding' && k !== 'transfer-encoding') res.setHeader(k, v);
-    });
+    res.setHeader('Content-Type', r.headers.get('content-type') || 'video/mp2t');
+    res.setHeader('Content-Length', segBuf.length);
     res.setHeader('Access-Control-Allow-Origin', '*');
-    r.body.pipe(res);
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.end(segBuf);
   } catch (e) {
     console.error('[hls seg]', req.params.prov, e.message);
     res.status(500).send('proxy error: ' + e.message);
@@ -1621,7 +1623,10 @@ app.get('/proxy/adn/:tmdbId/:season/:episode/master.mp4', async (req, res) => {
       const v = upstream.headers.get(h);
       if (v) res.setHeader(h, v);
     }
-    upstream.body.pipe(res);
+    // Buffer più largo per client sensibili (Nuvio): evita blocchi se CDN è lenta
+    const { PassThrough } = require('stream');
+    const buf = new PassThrough({ highWaterMark: 1024 * 1024 }); // 1MB
+    upstream.body.pipe(buf).pipe(res);
   } catch (e) {
     console.error('[proxy/adn]', e.message);
     res.status(502).send('adn proxy error');
